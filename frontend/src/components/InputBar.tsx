@@ -5,13 +5,92 @@ import { useAppStore } from '@/lib/store'
 import { Send, Mic } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// JSON 응답 포맷팅 함수
+function formatJsonResponse(data: any): string {
+  if (!data || typeof data !== 'object') {
+    return JSON.stringify(data, null, 2)
+  }
+
+  let formatted = ''
+  
+  // 분석 결과
+  if (data.analysis) {
+    formatted += `📊 **분석 결과**\n${data.analysis}\n\n`
+  }
+  
+  // 계획 제목
+  if (data.plan_title) {
+    formatted += `📋 **${data.plan_title}**\n\n`
+  }
+  
+  // 작업 목록
+  if (data.tasks && Array.isArray(data.tasks) && data.tasks.length > 0) {
+    formatted += `🔧 **실행 계획**\n`
+    data.tasks.forEach((task: any, index: number) => {
+      formatted += `\n**${index + 1}. ${task.title || `작업 ${index + 1}`}**\n`
+      formatted += `${task.description || '설명 없음'}\n`
+      
+      if (task.agent_allowed && task.agent_allowed.length > 0) {
+        formatted += `👥 담당 에이전트: ${task.agent_allowed.join(', ')}\n`
+      }
+      
+      if (task.mcp_tools && task.mcp_tools.length > 0) {
+        formatted += `🛠️ 사용 도구: ${task.mcp_tools.join(', ')}\n`
+      }
+      
+      if (task.estimated_time) {
+        formatted += `⏱️ 예상 시간: ${task.estimated_time}\n`
+      }
+      
+      if (task.dependencies && task.dependencies.length > 0) {
+        formatted += `🔗 종속성: ${task.dependencies.join(', ')}\n`
+      }
+    })
+    formatted += '\n'
+  }
+  
+  // 추가 질문
+  if (data.clarification_questions && Array.isArray(data.clarification_questions) && data.clarification_questions.length > 0) {
+    formatted += `❓ **추가 정보가 필요합니다**\n`
+    data.clarification_questions.forEach((q: any, index: number) => {
+      formatted += `\n${index + 1}. ${q.question || '질문 없음'}\n`
+      if (q.context) {
+        formatted += `   💡 ${q.context}\n`
+      }
+    })
+    formatted += '\n'
+  }
+  
+  // 메타 정보
+  const metaInfo = []
+  if (data.priority) metaInfo.push(`우선순위: ${data.priority}`)
+  if (data.complexity) metaInfo.push(`복잡도: ${data.complexity}`)
+  if (data.move_to_canvas !== undefined) metaInfo.push(`캔버스 이동: ${data.move_to_canvas ? '예' : '아니오'}`)
+  
+  if (metaInfo.length > 0) {
+    formatted += `📌 **계획 정보**: ${metaInfo.join(' | ')}\n`
+  }
+  
+  return formatted.trim()
+}
+
 export default function InputBar() {
   const [input, setInput] = useState('')
-  const { addMessage, isLoading } = useAppStore()
+  const { addMessage, updateMessage, isLoading } = useAppStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || isLoading) return
+
+    // OpenAI API 키 확인
+    const openaiApiKey = localStorage.getItem('openai_api_key')
+    if (!openaiApiKey) {
+      addMessage({
+        type: 'assistant',
+        content: '⚠️ OpenAI API 키가 설정되지 않았습니다. 우상단 설정 버튼(⚙️)을 클릭하여 API 키를 설정해주세요.',
+      })
+      return
+    }
 
     // 사용자 메시지 추가
     addMessage({
@@ -19,34 +98,101 @@ export default function InputBar() {
       content: input.trim(),
     })
 
+    const userMessage = input.trim()
     setInput('')
 
-    // TODO: AI 응답 처리
-    // 임시로 모의 응답 추가
-    setTimeout(() => {
+    try {
+      // 스트리밍 응답을 위한 fetch 요청
+      const response = await fetch('http://localhost:8000/api/planning/chat-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          openai_api_key: openaiApiKey
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('서버 응답 오류')
+      }
+
+      // 스트리밍 응답 처리
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      
+      // 빈 어시스턴트 메시지 생성 및 추가
+      const assistantMessage = {
+        type: 'assistant' as const,
+        content: '',
+      }
+      addMessage(assistantMessage)
+      
+      // 방금 추가한 메시지의 ID를 가져오기 위해 store에서 최신 메시지 찾기
+      const { chatHistory } = useAppStore.getState()
+      const lastMessageId = chatHistory[chatHistory.length - 1]?.id
+      
+      let accumulatedContent = ''
+      let isJsonComplete = false
+      
+      if (reader && lastMessageId) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            
+            const chunk = decoder.decode(value)
+            const lines = chunk.split('\n')
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6))
+                  
+                  if (data.type === 'content') {
+                    accumulatedContent += data.content
+                    // JSON이 완성되었는지 확인
+                    if (accumulatedContent.includes('```json') && accumulatedContent.includes('```')) {
+                      isJsonComplete = true
+                    }
+                    // 같은 메시지 박스에서 내용 업데이트 (실시간 표시)
+                    updateMessage(lastMessageId, accumulatedContent)
+                  } else if (data.type === 'done') {
+                    // 완료 시 최종 응답 처리
+                    if (data.full_response) {
+                      try {
+                        // JSON 응답 파싱 및 포맷팅
+                        const parsedJson = JSON.parse(data.full_response)
+                        const formattedResponse = formatJsonResponse(parsedJson)
+                        updateMessage(lastMessageId, formattedResponse)
+                      } catch (jsonError) {
+                        // JSON 파싱 실패 시 원본 텍스트 사용
+                        updateMessage(lastMessageId, accumulatedContent)
+                      }
+                    }
+                    break
+                  } else if (data.type === 'error') {
+                    updateMessage(lastMessageId, `❌ ${data.content}`)
+                    break
+                  }
+                } catch (parseError) {
+                  console.log('JSON 파싱 오류:', parseError)
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock()
+        }
+      }
+    } catch (error) {
+      // 네트워크 오류 등
       addMessage({
         type: 'assistant',
-        content: `다음과 같은 투자 분석 전략을 제안합니다:
-
-1. 시장 데이터 수집
-   - 주요 지수 및 개별 종목 데이터 수집
-   - 거래량 및 변동성 분석
-
-2. 기술적 분석
-   - 이동평균선 분석
-   - RSI 및 MACD 지표 확인
-
-3. 기본적 분석
-   - 재무제표 분석
-   - 업종별 비교 분석
-
-4. 투자 권고 생성
-   - 리스크 평가
-   - 목표가 설정
-
-실행하시겠습니까?`,
+        content: '❌ 서버와의 연결에 실패했습니다. 네트워크 상태를 확인해주세요.',
       })
-    }, 1000)
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

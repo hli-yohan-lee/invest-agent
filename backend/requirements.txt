@@ -1,0 +1,51 @@
+# FastAPI 웹 프레임워크
+fastapi
+uvicorn[standard]
+
+# 데이터베이스
+sqlalchemy
+asyncpg  # PostgreSQL async driver
+alembic  # 데이터베이스 마이그레이션
+
+# Redis 캐시
+redis
+aioredis
+
+# 인증 및 보안
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+
+# AI 및 MCP
+openai
+anthropic
+httpx
+
+# 데이터 처리
+pydantic
+pydantic-settings
+
+# 웹 스크래핑 및 데이터 수집
+beautifulsoup4
+selenium
+requests
+
+# WebSocket 및 실시간 통신
+websockets
+
+# 환경 설정
+python-dotenv
+
+# 로깅 및 모니터링
+structlog
+
+# 이메일 검증
+email-validator
+
+# 테스트
+pytest
+pytest-asyncio
+
+# 개발 도구 (선택사항)
+black
+isort

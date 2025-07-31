@@ -115,6 +115,7 @@ interface AppState {
   
   // 플래닝 액션
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void
+  updateMessage: (id: string, content: string) => void
   updatePlan: (plan: Plan) => void
   clearChatHistory: () => void
   
@@ -174,6 +175,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       chatHistory: [...state.chatHistory, newMessage]
     }))
   },
+  
+  updateMessage: (id, content) => set((state) => ({
+    chatHistory: state.chatHistory.map(message => 
+      message.id === id ? { ...message, content } : message
+    )
+  })),
   
   updatePlan: (plan) => set({ currentPlan: plan }),
   clearChatHistory: () => set({ chatHistory: [], currentPlan: null }),
