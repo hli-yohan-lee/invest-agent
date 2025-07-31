@@ -12,7 +12,8 @@ import {
   Connection,
   Edge,
   Node,
-  useReactFlow
+  useReactFlow,
+  ReactFlowProvider
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useAppStore } from '@/lib/store'
@@ -93,14 +94,72 @@ const initialEdges: Edge[] = [
   { id: 'e3', source: 'task-2', target: 'result', type: 'default' },
 ]
 
-export default function WorkflowCanvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  const { executionStatus, setExecutionStatus, setCurrentTab } = useAppStore()
+function WorkflowCanvasContent() {
+  // store에서 nodes와 edges 가져오기
+  const { 
+    nodes: storeNodes, 
+    edges: storeEdges, 
+    executionStatus, 
+    setExecutionStatus, 
+    setCurrentTab,
+    updateNode,
+    addEdge: addStoreEdge,
+    deleteEdge,
+    workflowGenerating  // 워크플로우 생성 중 상태 추가
+  } = useAppStore()
+  
+  // store 상태를 React Flow 상태와 동기화
+  const [nodes, setNodes, onNodesChange] = useNodesState(storeNodes.length > 0 ? storeNodes as any : initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(storeEdges.length > 0 ? storeEdges as any : initialEdges)
+  
+  // React Flow 인스턴스 가져오기
+  const reactFlowInstance = useReactFlow()
+  
+  // 노드가 업데이트될 때 뷰 맞추기
+  useEffect(() => {
+    if (storeNodes.length > 0) {
+      setTimeout(() => {
+        console.log('Fitting view to new nodes...')
+        reactFlowInstance.fitView({ padding: 50 })
+      }, 100)
+    }
+  }, [storeNodes, reactFlowInstance])
+  
+  // store 상태가 변경될 때 React Flow 상태 업데이트
+  useEffect(() => {
+    console.log('Store nodes changed:', storeNodes.length, storeNodes)
+    if (storeNodes.length > 0) {
+      console.log('Updating React Flow nodes...')
+      setNodes(storeNodes as any)
+    } else {
+      console.log('No store nodes, using initial nodes')
+      setNodes(initialNodes)
+    }
+  }, [storeNodes, setNodes])
+  
+  useEffect(() => {
+    console.log('Store edges changed:', storeEdges.length, storeEdges) 
+    if (storeEdges.length > 0) {
+      console.log('Updating React Flow edges...')
+      setEdges(storeEdges as any)
+    } else {
+      console.log('No store edges, using initial edges')
+      setEdges(initialEdges)
+    }
+  }, [storeEdges, setEdges])
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
+    (params: Connection) => {
+      const newEdge = {
+        id: `edge-${Date.now()}`,
+        source: params.source!,
+        target: params.target!,
+        type: 'default' as const
+      }
+      setEdges((eds) => addEdge(params, eds))
+      addStoreEdge(newEdge)
+    },
+    [setEdges, addStoreEdge]
   )
 
   const handleNodeDataChange = useCallback((nodeId: string, newData: any) => {
@@ -109,7 +168,9 @@ export default function WorkflowCanvas() {
         node.id === nodeId ? { ...node, data: newData } : node
       )
     )
-  }, [setNodes])
+    // store도 업데이트
+    updateNode(nodeId, { data: newData })
+  }, [setNodes, updateNode])
 
   const handleExecute = useCallback(() => {
     setExecutionStatus('running')
@@ -162,7 +223,18 @@ export default function WorkflowCanvas() {
       </div>
 
       {/* React Flow */}
-      <div className="h-[calc(100vh-200px)]">
+      <div className="h-[calc(100vh-200px)] relative">
+        {/* 워크플로우 생성 중 로딩 오버레이 */}
+        {workflowGenerating && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg p-8 flex flex-col items-center space-y-4">
+              <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+              <div className="text-lg font-medium text-gray-900">워크플로우 생성 중</div>
+              <div className="text-sm text-gray-500">플래닝 결과를 워크플로우로 변환하고 있습니다...</div>
+            </div>
+          </div>
+        )}
+        
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -180,5 +252,13 @@ export default function WorkflowCanvas() {
       </div>
     </div>
     </NodeDataContext.Provider>
+  )
+}
+
+export default function WorkflowCanvas() {
+  return (
+    <ReactFlowProvider>
+      <WorkflowCanvasContent />
+    </ReactFlowProvider>
   )
 }

@@ -261,14 +261,25 @@ async def get_plan(
 @router.post("/chat-stream")
 async def chat_stream(request: ChatRequest):
     """스트리밍 채팅 엔드포인트 (인증 없음)"""
-    logger.info("스트리밍 채팅 요청", message_length=len(request.message))
+    logger.info("스트리밍 채팅 요청", message_length=len(request.message), mode=request.mode)
+    
+    # API 키 로깅 (보안상 일부만)
+    api_key_preview = request.openai_api_key[:10] + "..." if request.openai_api_key else "None"
+    logger.info(f"API 키 상태: {api_key_preview}")
     
     async def generate_stream():
         try:
             # AI 플래너로 스트리밍 응답 생성
             ai_planner = AIPlanner(api_key=request.openai_api_key)
             
-            async for chunk in ai_planner.generate_plan_stream(request.message):
+            # 워크플로우 모드인 경우 대화 내용과 함께 전달
+            if request.mode == "workflow" and request.chat_history:
+                query = f"다음 대화 내용을 워크플로우로 변환해주세요:\n\n{request.chat_history}\n\n사용자 추가 요청: {request.message}"
+                logger.info(f"워크플로우 변환 쿼리 길이: {len(query)}")
+            else:
+                query = request.message
+            
+            async for chunk in ai_planner.generate_plan_stream(query, request.mode):
                 # SSE 형식으로 데이터 전송
                 yield f"data: {json.dumps(chunk)}\n\n"
                 

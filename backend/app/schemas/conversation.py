@@ -90,6 +90,8 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     conversation_id: Optional[int] = None
     openai_api_key: Optional[str] = None
+    mode: str = Field(default="conversation", pattern="^(conversation|workflow)$")
+    chat_history: Optional[str] = None  # 워크플로우 모드에서 기존 대화 내용
 
 class ChatResponse(BaseModel):
     """채팅 응답 스키마"""

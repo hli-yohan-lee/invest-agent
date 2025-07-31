@@ -76,11 +76,64 @@ function formatJsonResponse(data: any): string {
 
 export default function InputBar() {
   const [input, setInput] = useState('')
-  const { addMessage, updateMessage, isLoading } = useAppStore()
+  const { 
+    addMessage, 
+    updateMessage, 
+    isLoading,
+    generateWorkflowFromPlanning,
+    setCurrentTab
+  } = useAppStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || isLoading) return
+    await sendMessage()
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    console.log('Key pressed:', e.key, 'Ctrl:', e.ctrlKey, 'Input:', input.trim())
+    
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault()
+      console.log('Ctrl+Enter detected!')
+      
+      if (!isLoading) {
+        console.log('Converting to workflow directly...')
+        
+        // OpenAI API 키 확인
+        const openaiApiKey = localStorage.getItem('openai_api_key')
+        if (!openaiApiKey) {
+          addMessage({
+            type: 'assistant',
+            content: '⚠️ OpenAI API 키가 설정되지 않았습니다. 우상단 설정 버튼(⚙️)을 클릭하여 API 키를 설정해주세요.',
+          })
+          return
+        }
+        
+        // 입력된 메시지를 플래닝 대화에 추가 (있는 경우에만)
+        if (input.trim()) {
+          addMessage({
+            type: 'user',
+            content: input.trim(),
+          })
+          setInput('')
+        }
+        
+        // 즉시 탭 변경
+        setCurrentTab('workflow')
+        
+        // 백그라운드에서 워크플로우 생성 (화면에 메시지 표시 없이)
+        generateWorkflowFromPlanning()
+      }
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (input.trim() && !isLoading) {
+        sendMessage()
+      }
+    }
+  }
+
+  const sendMessage = async () => {
 
     // OpenAI API 키 확인
     const openaiApiKey = localStorage.getItem('openai_api_key')
@@ -195,10 +248,120 @@ export default function InputBar() {
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
+  const sendWorkflowMessage = async () => {
+    // OpenAI API 키 확인
+    const openaiApiKey = localStorage.getItem('openai_api_key')
+    if (!openaiApiKey) {
+      addMessage({
+        type: 'assistant',
+        content: '⚠️ OpenAI API 키가 설정되지 않았습니다. 우상단 설정 버튼(⚙️)을 클릭하여 API 키를 설정해주세요.',
+      })
+      return
+    }
+
+    // 기존 대화 내용 수집
+    const { chatHistory } = useAppStore.getState()
+    const chatHistoryText = chatHistory
+      .map(msg => `${msg.type === 'user' ? '사용자' : 'AI'}: ${msg.content}`)
+      .join('\n\n')
+
+    // 사용자 메시지 추가 (워크플로우 변환 요청)
+    const userMessage = input.trim() || "위 대화 내용을 워크플로우로 변환해주세요"
+    addMessage({
+      type: 'user',
+      content: userMessage,
+    })
+
+    setInput('')
+
+    try {
+      // 워크플로우 변환 요청
+      const response = await fetch('http://localhost:8000/api/planning/chat-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          openai_api_key: openaiApiKey,
+          mode: 'workflow',
+          chat_history: chatHistoryText
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('서버 응답 오류')
+      }
+
+      // 스트리밍 응답 처리
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      
+      // 빈 어시스턴트 메시지 생성 및 추가
+      const assistantMessage = {
+        type: 'assistant' as const,
+        content: '',
+      }
+      addMessage(assistantMessage)
+      
+      // 방금 추가한 메시지의 ID를 가져오기 위해 store에서 최신 메시지 찾기
+      const { chatHistory: updatedHistory } = useAppStore.getState()
+      const lastMessageId = updatedHistory[updatedHistory.length - 1]?.id
+      
+      let accumulatedContent = ''
+      
+      if (reader && lastMessageId) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            
+            const chunk = decoder.decode(value)
+            const lines = chunk.split('\n')
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6))
+                  
+                  if (data.type === 'content') {
+                    accumulatedContent += data.content
+                    // 실시간 업데이트
+                    updateMessage(lastMessageId, accumulatedContent)
+                  } else if (data.type === 'done') {
+                    // 완료 시 최종 응답 처리
+                    if (data.full_response) {
+                      try {
+                        // JSON 응답 파싱 시도
+                        const parsedJson = JSON.parse(data.full_response)
+                        const formattedResponse = `🔄 **워크플로우 변환 완료**\n\n\`\`\`json\n${JSON.stringify(parsedJson, null, 2)}\n\`\`\``
+                        updateMessage(lastMessageId, formattedResponse)
+                      } catch (jsonError) {
+                        // JSON 파싱 실패 시 원본 텍스트 사용
+                        updateMessage(lastMessageId, accumulatedContent)
+                      }
+                    }
+                    break
+                  } else if (data.type === 'error') {
+                    updateMessage(lastMessageId, `❌ ${data.content}`)
+                    break
+                  }
+                } catch (parseError) {
+                  console.log('JSON 파싱 오류:', parseError)
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock()
+        }
+      }
+    } catch (error) {
+      // 네트워크 오류 등
+      addMessage({
+        type: 'assistant',
+        content: '❌ 워크플로우 변환 중 오류가 발생했습니다. 네트워크 상태를 확인해주세요.',
+      })
     }
   }
 
@@ -210,8 +373,8 @@ export default function InputBar() {
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="투자 관련 질문을 입력하세요... (예: PER이 높은 기업 분석해줘)"
+              onKeyDown={handleKeyDown}
+              placeholder="투자 관련 질문을 입력하세요... (Enter: 전송, Ctrl+Enter: 전송 후 워크플로우 생성)"
               className="w-full min-h-[24px] max-h-32 px-4 py-3 pr-12 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               rows={1}
               style={{ 
@@ -245,7 +408,7 @@ export default function InputBar() {
           </button>
         </form>
         <div className="mt-2 text-xs text-gray-500 text-center">
-          Ctrl + Enter로 전송 • 최대 2000자
+          Enter: 전송 • Ctrl + Enter: 전송 후 워크플로우 생성 • 최대 2000자
         </div>
       </div>
     </div>
