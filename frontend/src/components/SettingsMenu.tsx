@@ -13,8 +13,11 @@ export default function SettingsMenu({ isOpen, onClose }: SettingsMenuProps) {
   const [openaiApiKey, setOpenaiApiKey] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isTesting, setIsTesting] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  const [testMessage, setTestMessage] = useState('')
 
   // 저장된 설정 불러오기
   useEffect(() => {
@@ -23,6 +26,48 @@ export default function SettingsMenu({ isOpen, onClose }: SettingsMenuProps) {
       setOpenaiApiKey(savedApiKey)
     }
   }, [])
+
+  const handleTest = async () => {
+    setIsTesting(true)
+    setTestStatus('idle')
+    setTestMessage('')
+
+    try {
+      const response = await fetch('http://localhost:8000/api/planning/test-openai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          message: "API 연결 테스트",
+          openai_api_key: openaiApiKey 
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.status === 'success') {
+          setTestStatus('success')
+          setTestMessage('OpenAI API 연결 성공!')
+        } else {
+          setTestStatus('error')
+          setTestMessage(data.message || 'API 연결 실패')
+        }
+      } else {
+        setTestStatus('error')
+        setTestMessage('서버 연결 실패')
+      }
+    } catch (error) {
+      setTestStatus('error')
+      setTestMessage('네트워크 오류')
+    } finally {
+      setIsTesting(false)
+      setTimeout(() => {
+        setTestStatus('idle')
+        setTestMessage('')
+      }, 3000)
+    }
+  }
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -136,6 +181,37 @@ export default function SettingsMenu({ isOpen, onClose }: SettingsMenuProps) {
               {errorMessage || 'API 키 검증에 실패했습니다.'}
             </div>
           )}
+
+          {/* Test Status Messages */}
+          {testStatus === 'success' && (
+            <div className="flex items-center text-green-600 text-sm">
+              <Check className="w-4 h-4 mr-2" />
+              {testMessage}
+            </div>
+          )}
+          
+          {testStatus === 'error' && (
+            <div className="flex items-center text-red-600 text-sm">
+              <AlertCircle className="w-4 h-4 mr-2" />
+              {testMessage}
+            </div>
+          )}
+
+          {/* Test Button */}
+          <div>
+            <button
+              onClick={handleTest}
+              disabled={isTesting || !openaiApiKey}
+              className={cn(
+                "w-full px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50",
+                isTesting 
+                  ? "bg-green-400 text-white" 
+                  : "bg-green-600 hover:bg-green-700 text-white"
+              )}
+            >
+              {isTesting ? 'API 연결 테스트 중...' : 'OpenAI API 연결 테스트'}
+            </button>
+          </div>
         </div>
 
         {/* Footer */}

@@ -45,6 +45,190 @@ const nodeTypes = {
   result: ResultNode,
 }
 
+// 워크플로우 컨트롤 패널 컴포넌트
+const WorkflowControls = () => {
+  const { 
+    executionStatus, 
+    executeEntireWorkflow, 
+    nodes, 
+    executeWorkflowNode,
+    availableTools,
+    getAvailableMCPTools
+  } = useAppStore()
+  
+  // 컴포넌트 마운트 시 MCP 도구 목록 로드
+  React.useEffect(() => {
+    getAvailableMCPTools()
+  }, [getAvailableMCPTools])
+  
+  const handleExecuteWorkflow = () => {
+    executeEntireWorkflow()
+  }
+  
+  const handleExecuteNode = (nodeId: string, toolName?: string) => {
+    const node = nodes.find(n => n.id === nodeId)
+    if (node && node.type !== 'start') {
+      executeWorkflowNode(nodeId, toolName)
+    }
+  }
+  
+  // 노드 타입별 추천 도구
+  const getRecommendedTools = (nodeType?: string) => {
+    switch (nodeType) {
+      case 'analysis':
+        return [
+          'get_stock_fundamentals',
+          'get_market_cap', 
+          'get_sector_performance'
+        ]
+      case 'data':
+        return [
+          'get_stock_prices',
+          'get_stock_info',
+          'search_ticker'
+        ]
+      case 'report':
+        return [
+          'get_foreign_investment',
+          'get_institutional_investment',
+          'get_index_data'
+        ]
+      default:
+        return availableTools.slice(0, 3).map(t => t.name)
+    }
+  }
+  
+  const isRunning = executionStatus === 'running'
+  const completedNodes = nodes.filter(n => n.data.status === 'completed').length
+  const totalExecutableNodes = nodes.filter(n => n.type !== 'start').length
+  
+  return (
+    <div className="absolute top-4 left-4 z-10 bg-white rounded-lg shadow-lg p-4 border max-w-md">
+      <div className="flex items-center gap-3 mb-3">
+        {/* 워크플로우 실행 버튼 */}
+        <button
+          onClick={handleExecuteWorkflow}
+          disabled={isRunning}
+          className={`px-4 py-2 rounded-lg font-medium ${
+            isRunning
+              ? 'bg-gray-400 text-white cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-700 text-white'
+          }`}
+        >
+          {isRunning ? '실행 중...' : '전체 실행'}
+        </button>
+        
+        {/* 실행 상태 표시 */}
+        <div className="flex items-center gap-2">
+          <div className={`w-3 h-3 rounded-full ${
+            executionStatus === 'idle' ? 'bg-gray-400' :
+            executionStatus === 'running' ? 'bg-yellow-500 animate-pulse' :
+            executionStatus === 'completed' ? 'bg-green-500' :
+            'bg-red-500'
+          }`} />
+          <span className="text-sm text-gray-600">
+            {executionStatus === 'idle' && '대기 중'}
+            {executionStatus === 'running' && '실행 중'}
+            {executionStatus === 'completed' && '완료'}
+            {executionStatus === 'error' && '오류'}
+          </span>
+        </div>
+        
+        {/* 진행률 표시 */}
+        {totalExecutableNodes > 0 && (
+          <div className="text-sm text-gray-600">
+            {completedNodes}/{totalExecutableNodes}
+          </div>
+        )}
+      </div>
+      
+      {/* 개별 노드 실행 패널 */}
+      {nodes.length > 1 && (
+        <div className="pt-3 border-t">
+          <div className="text-xs text-gray-500 mb-2">개별 노드 실행:</div>
+          <div className="space-y-2">
+            {nodes.filter(n => n.type !== 'start').map((node) => {
+              const recommendedTools = getRecommendedTools(node.data.type)
+              return (
+                <div key={node.id} className="bg-gray-50 rounded p-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">{node.data.label}</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      node.data.status === 'completed' ? 'bg-green-100 text-green-700' :
+                      node.data.status === 'running' ? 'bg-yellow-100 text-yellow-700' :
+                      node.data.status === 'error' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {node.data.status === 'pending' && '대기'}
+                      {node.data.status === 'running' && '실행중'}
+                      {node.data.status === 'completed' && '완료'}
+                      {node.data.status === 'error' && '오류'}
+                    </span>
+                  </div>
+                  
+                  {/* 추천 도구 버튼들 */}
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      onClick={() => handleExecuteNode(node.id)}
+                      disabled={isRunning || node.data.status === 'running'}
+                      className="px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded disabled:opacity-50"
+                    >
+                      자동
+                    </button>
+                    {recommendedTools.map((tool) => (
+                      <button
+                        key={tool}
+                        onClick={() => handleExecuteNode(node.id, tool)}
+                        disabled={isRunning || node.data.status === 'running'}
+                        className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded disabled:opacity-50"
+                        title={tool}
+                      >
+                        {tool.replace('get_', '').replace('_', ' ')}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* 실행 결과 미리보기 */}
+                  {node.data.result && (
+                    <div className="mt-2 text-xs text-gray-600 bg-white rounded p-2 border">
+                      <div className="font-medium mb-1">결과:</div>
+                      <div className="max-h-20 overflow-y-auto">
+                        {typeof node.data.result === 'string' 
+                          ? node.data.result.substring(0, 100) + '...'
+                          : JSON.stringify(node.data.result).substring(0, 100) + '...'}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 오류 표시 */}
+                  {node.data.error && (
+                    <div className="mt-2 text-xs text-red-600 bg-red-50 rounded p-2 border border-red-200">
+                      오류: {node.data.error}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      
+      {/* MCP 도구 상태 */}
+      {availableTools.length > 0 && (
+        <div className="pt-3 border-t mt-3">
+          <div className="text-xs text-gray-500 mb-1">
+            사용 가능한 MCP 도구: {availableTools.length}개
+          </div>
+          <div className="text-xs text-gray-400">
+            {availableTools.slice(0, 3).map(t => t.name.replace('get_', '')).join(', ')}
+            {availableTools.length > 3 && ` 외 ${availableTools.length - 3}개`}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const initialNodes: Node[] = [
   {
     id: 'start',
@@ -60,8 +244,7 @@ const initialNodes: Node[] = [
       label: '데이터 수집',
       type: 'data',
       prompt: '한국 주식 시장의 PER, PBR, ROE 데이터를 수집하고 최신 재무제표 정보를 가져와 주세요.',
-      useAgent: true,
-      mcpModules: ['naver-securities', 'toss-securities', 'korea-exchange']
+      status: 'pending'
     },
   },
   {
@@ -72,8 +255,7 @@ const initialNodes: Node[] = [
       label: '데이터 분석',
       type: 'analysis',
       prompt: '수집된 재무 데이터를 분석하여 PER 15 이하, ROE 10% 이상인 기업들을 필터링하고 상위 20개 종목을 선별해 주세요.',
-      useAgent: true,
-      mcpModules: ['financial-analysis', 'market-data']
+      status: 'pending'
     },
   },
   {
@@ -83,7 +265,7 @@ const initialNodes: Node[] = [
     data: { 
       label: '분석 결과',
       type: 'report',
-      status: 'success'
+      status: 'pending'
     },
   },
 ]
@@ -191,7 +373,7 @@ function WorkflowCanvasContent() {
       <div className="flex-1 bg-gray-50">
       {/* 툴바 */}
       <div className="bg-white border-b border-gray-200 p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-semibold">워크플로우 편집기</h2>
             <div className="flex items-center gap-2">
@@ -220,10 +402,28 @@ function WorkflowCanvasContent() {
             </button>
           </div>
         </div>
+        
+        {/* 전역 에이전트 호출 설정 */}
+        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              defaultChecked={true}
+              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700">AI 에이전트 호출 사용</span>
+          </label>
+          <span className="text-xs text-gray-500 ml-2">
+            체크하면 워크플로우 실행 시 AI 에이전트가 작업을 수행합니다
+          </span>
+        </div>
       </div>
 
       {/* React Flow */}
       <div className="h-[calc(100vh-200px)] relative">
+        {/* 워크플로우 컨트롤 패널 */}
+        <WorkflowControls />
+        
         {/* 워크플로우 생성 중 로딩 오버레이 */}
         {workflowGenerating && (
           <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">

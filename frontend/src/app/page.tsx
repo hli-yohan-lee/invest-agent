@@ -7,6 +7,7 @@ import TabNavigation from '@/components/TabNavigation'
 import InputBar from '@/components/InputBar'
 import ChatInterface from '@/components/ChatInterface'
 import WorkflowCanvas from '@/components/WorkflowCanvas'
+import ResultView from '@/components/ResultView'
 import SettingsMenu from '@/components/SettingsMenu'
 
 export default function Home() {
@@ -20,14 +21,7 @@ export default function Home() {
       case 'workflow':
         return <WorkflowCanvas />
       case 'result':
-        return (
-          <div className="flex-1 bg-gray-50 rounded-lg p-8 flex items-center justify-center">
-            <div className="text-center">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">분석 결과</h3>
-              <p className="text-gray-600">아직 분석 결과가 없습니다. 워크플로우를 실행해보세요.</p>
-            </div>
-          </div>
-        )
+        return <ResultView />
       default:
         return <ChatInterface />
     }

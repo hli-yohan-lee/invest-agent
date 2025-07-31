@@ -39,10 +39,6 @@ export interface Node {
     prompt?: string
     type?: 'analysis' | 'data' | 'report' | 'general'
     status?: 'pending' | 'running' | 'completed' | 'error'
-    result?: any
-    error?: string
-    tool_used?: string
-    parameters_used?: Record<string, any>
   }
 }
 
@@ -85,12 +81,6 @@ export interface MCPParameter {
   defaultValue?: any
 }
 
-export interface MCPTool {
-  name: string
-  description: string
-  inputSchema: any
-}
-
 interface AppState {
   // 전역 상태
   currentTab: 'planning' | 'workflow' | 'result'
@@ -116,7 +106,6 @@ interface AppState {
   // MCP 상태
   availableModules: MCPModule[]
   moduleStatus: Record<string, 'online' | 'offline'>
-  availableTools: MCPTool[]
   
   // 액션들
   setCurrentTab: (tab: 'planning' | 'workflow' | 'result') => void
@@ -147,15 +136,16 @@ interface AppState {
   // MCP 액션
   setAvailableModules: (modules: MCPModule[]) => void
   updateModuleStatus: (moduleId: string, status: 'online' | 'offline') => void
-  setAvailableTools: (tools: MCPTool[]) => void
-  getAvailableMCPTools: () => Promise<void>
+  
+  // 워크플로우 생성 액션
+  generateWorkflowFromPlanning: () => void
   
   // 워크플로우 실행 액션
   executeWorkflowNode: (nodeId: string, toolName?: string, params?: Record<string, any>) => Promise<void>
   executeEntireWorkflow: () => Promise<void>
   
-  // 워크플로우 생성 액션
-  generateWorkflowFromPlanning: () => void
+  // MCP 도구 목록 조회
+  getAvailableMCPTools: () => Promise<void>
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -179,7 +169,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   availableModules: [],
   moduleStatus: {},
-  availableTools: [],
   
   // 전역 액션
   setCurrentTab: (tab) => {
@@ -253,256 +242,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateModuleStatus: (moduleId, status) => set((state) => ({
     moduleStatus: { ...state.moduleStatus, [moduleId]: status }
   })),
-  setAvailableTools: (tools) => set({ availableTools: tools }),
-  
-  // MCP 도구 목록 조회
-  getAvailableMCPTools: async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/mcp/tools')
-      if (response.ok) {
-        const tools = await response.json()
-        set({ availableTools: tools })
-        console.log('Available MCP tools:', tools)
-      }
-    } catch (error) {
-      console.error('Failed to get MCP tools:', error)
-    }
-  },
-  
-  // 워크플로우 노드 실행
-  executeWorkflowNode: async (nodeId: string, toolName?: string, params?: Record<string, any>) => {
-    console.log(`Executing node ${nodeId} with tool ${toolName}:`, params)
-    
-    const state = get()
-    const node = state.nodes.find(n => n.id === nodeId)
-    
-    if (!node) {
-      console.error(`Node ${nodeId} not found`)
-      return
-    }
-    
-    try {
-      // 노드 상태를 실행 중으로 변경
-      set((state) => ({
-        nodes: state.nodes.map(node => 
-          node.id === nodeId 
-            ? { ...node, data: { ...node.data, status: 'running' } }
-            : node
-        )
-      }))
-      
-      // 도구 및 매개변수 자동 결정
-      let finalToolName = toolName
-      let finalParams = params || {}
-      
-      if (!finalToolName) {
-        // 노드 타입에 따른 자동 도구 선택
-        if (node.data.type === 'analysis') {
-          finalToolName = 'get_stock_fundamentals'
-          finalParams = { ticker: '005930' } // 삼성전자 기본값
-        } else if (node.data.type === 'data') {
-          finalToolName = 'get_stock_prices'
-          const today = new Date()
-          const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
-          finalParams = {
-            ticker: '005930',
-            start_date: lastWeek.toISOString().slice(0, 10).replace(/-/g, ''),
-            end_date: today.toISOString().slice(0, 10).replace(/-/g, ''),
-            period: 'day'
-          }
-        } else if (node.data.type === 'report') {
-          finalToolName = 'get_market_cap'
-          finalParams = { market: 'KOSPI' }
-        } else {
-          // 기본값
-          finalToolName = 'get_stock_info'
-          finalParams = { ticker: '005930' }
-        }
-      }
-      
-      console.log(`Using tool: ${finalToolName} with params:`, finalParams)
-      
-      // MCP 도구 직접 호출 API 요청
-      const response = await fetch('http://localhost:8000/api/mcp/call-tool', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tool_name: finalToolName,
-          parameters: finalParams
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`API 요청 실패: ${response.status}`)
-      }
-      
-      const result = await response.json()
-      console.log(`Node ${nodeId} execution result:`, result)
-      
-      // 실행 완료 상태로 노드 업데이트
-      const newStatus = result.success ? 'completed' : 'error'
-      
-      set((state) => ({
-        nodes: state.nodes.map(node => 
-          node.id === nodeId 
-            ? { 
-                ...node, 
-                data: { 
-                  ...node.data, 
-                  status: newStatus,
-                  result: result.result,
-                  error: result.error || null,
-                  tool_used: finalToolName,
-                  parameters_used: finalParams
-                } 
-              }
-            : node
-        )
-      }))
-      
-      console.log(`Node ${nodeId} execution completed with status: ${newStatus}`)
-      
-    } catch (error) {
-      console.error(`Node ${nodeId} execution failed:`, error)
-      
-      // 오류 상태로 노드 업데이트
-      set((state) => ({
-        nodes: state.nodes.map(node => 
-          node.id === nodeId 
-            ? { 
-                ...node, 
-                data: { 
-                  ...node.data, 
-                  status: 'error',
-                  error: error instanceof Error ? error.message : String(error)
-                } 
-              }
-            : node
-        )
-      }))
-    }
-  },
-  
-  // 전체 워크플로우 실행
-  executeEntireWorkflow: async () => {
-    console.log('Executing entire workflow...')
-    
-    try {
-      set({ executionStatus: 'running' })
-      
-      // 시작 노드를 제외한 실행 가능한 노드들을 순서대로 실행
-      const initialState = get()
-      const executableNodes = initialState.nodes.filter(node => 
-        node.type !== 'start' && node.data.status !== 'completed'
-      )
-      
-      console.log('Executable nodes:', executableNodes.map(n => n.id))
-      
-      // 기본 실행 매개변수 설정
-      for (const node of executableNodes) {
-        console.log(`Processing node: ${node.id} (${node.data.type})`)
-        
-        // 결과 노드인 경우 특별 처리
-        if (node.type === 'result') {
-          // 최신 상태에서 이전 노드들의 결과를 종합해서 최종 결과 생성
-          const currentState = get()
-          const taskNodes = currentState.nodes.filter(n => n.type === 'task' && n.data.status === 'completed')
-          const summaryResults = taskNodes.map(n => ({
-            title: n.data.label,
-            result: n.data.result
-          }))
-          
-          console.log(`Completed task nodes: ${taskNodes.length}`)
-          
-          // 결과 노드 업데이트
-          set((state) => ({
-            nodes: state.nodes.map(n => 
-              n.id === node.id 
-                ? { 
-                    ...n, 
-                    data: { 
-                      ...n.data, 
-                      status: 'completed',
-                      result: {
-                        summary: `총 ${taskNodes.length}개의 작업이 완료되었습니다.`,
-                        details: summaryResults,
-                        completedAt: new Date().toISOString()
-                      }
-                    } 
-                  }
-                : n
-            )
-          }))
-        } else {
-          // 일반 노드 실행 (자동 도구 선택)
-          console.log(`Executing node ${node.id}...`)
-          await get().executeWorkflowNode(node.id)
-          console.log(`Node ${node.id} execution completed`)
-        }
-        
-        // 노드 간 실행 간격
-        await new Promise(resolve => setTimeout(resolve, 500))
-      }
-      
-      set({ executionStatus: 'completed' })
-      console.log('Entire workflow execution completed!')
-      
-      // 최신 상태 다시 가져오기 (노드 실행 후 업데이트된 상태)
-      const updatedState = get()
-      
-      // 워크플로우 완료 후 결과 생성 및 결과 탭으로 이동
-      const resultNode = updatedState.nodes.find(node => node.type === 'result')
-      if (resultNode && resultNode.data.result) {
-        const newResult: Result = {
-          id: Math.random().toString(36).substr(2, 9),
-          workflowId: 'workflow-' + Date.now(),
-          type: 'report',
-          data: {
-            summary: '워크플로우 실행 완료',
-            results: updatedState.nodes.filter(node => node.type === 'task').map(node => ({
-              nodeId: node.id,
-              title: node.data.label,
-              status: node.data.status,
-              result: node.data.result,
-              tool_used: node.data.tool_used,
-              parameters_used: node.data.parameters_used
-            })),
-            finalResult: resultNode.data.result
-          },
-          metadata: {
-            executionTime: Date.now(),
-            timestamp: new Date(),
-            modules: updatedState.nodes.filter(node => node.data.tool_used).map(node => node.data.tool_used || '')
-          },
-          editable: false
-        }
-        
-        // 결과 추가 및 결과 탭으로 이동
-        set((state) => ({
-          results: [...state.results, newResult],
-          currentResult: newResult,
-          currentTab: 'result' // 모든 실행 완료 후에만 결과 탭으로 이동
-        }))
-        
-        console.log('All tasks completed! Moved to result tab with final results')
-      } else {
-        // 결과 노드가 없거나 결과가 없어도 모든 작업 완료 후 결과 탭으로 이동
-        set({ currentTab: 'result' })
-        console.log('All tasks completed! Moved to result tab')
-      }
-      
-    } catch (error) {
-      console.error('Workflow execution failed:', error)
-      set({ 
-        executionStatus: 'error',
-        currentTab: 'result', // 오류 시에도 결과 탭으로 이동 (오류 확인용)
-        error: error instanceof Error ? error.message : String(error)
-      })
-    }
-  },
-  
     // 플래닝 결과를 워크플로우로 변환
   generateWorkflowFromPlanning: async () => {
     console.log('generateWorkflowFromPlanning called!')
@@ -738,8 +477,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ 
         nodes: newNodes, 
         edges: newEdges,
-        workflowGenerating: false, // 로딩 종료
-        currentTab: 'workflow' // 워크플로우 탭으로 이동
+        workflowGenerating: false // 로딩 종료
       })
       
       console.log('Workflow generation completed!')
@@ -806,9 +544,254 @@ export const useAppStore = create<AppState>((set, get) => ({
         nodes: newNodes, 
         edges: newEdges,
         workflowGenerating: false, // 로딩 종료
-        currentTab: 'workflow', // 워크플로우 탭으로 이동
         error: '워크플로우 생성에 실패했습니다. 기본 워크플로우를 생성했습니다.' 
       })
     }
   },
+  
+  // 워크플로우 실행 기능
+  executeWorkflowNode: async (nodeId: string, toolName?: string, params?: Record<string, any>) => {
+    console.log(`Executing node ${nodeId} with tool ${toolName}:`, params)
+    
+    const state = get()
+    const node = state.nodes.find(n => n.id === nodeId)
+    
+    if (!node) {
+      console.error(`Node ${nodeId} not found`)
+      return
+    }
+    
+    try {
+      // 노드 상태를 실행 중으로 변경
+      set((state) => ({
+        nodes: state.nodes.map(node => 
+          node.id === nodeId 
+            ? { ...node, data: { ...node.data, status: 'running' } }
+            : node
+        )
+      }))
+      
+      // 도구 및 매개변수 자동 결정
+      let finalToolName = toolName
+      let finalParams = params || {}
+      
+      if (!finalToolName) {
+        // 노드 타입에 따른 자동 도구 선택
+        if (node.data.type === 'analysis') {
+          finalToolName = 'get_stock_fundamentals'
+          finalParams = { ticker: '005930' } // 삼성전자 기본값
+        } else if (node.data.type === 'data') {
+          finalToolName = 'get_stock_prices'
+          const today = new Date()
+          const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+          finalParams = {
+            ticker: '005930',
+            start_date: lastWeek.toISOString().slice(0, 10).replace(/-/g, ''),
+            end_date: today.toISOString().slice(0, 10).replace(/-/g, ''),
+            period: 'day'
+          }
+        } else if (node.data.type === 'report') {
+          finalToolName = 'get_market_cap'
+          finalParams = { market: 'KOSPI' }
+        } else {
+          // 기본값
+          finalToolName = 'get_stock_info'
+          finalParams = { ticker: '005930' }
+        }
+      }
+      
+      console.log(`Using tool: ${finalToolName} with params:`, finalParams)
+      
+      // MCP 도구 직접 호출 API 요청
+      const response = await fetch('http://localhost:8000/api/mcp/call-tool', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool_name: finalToolName,
+          parameters: finalParams
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`API 요청 실패: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      console.log(`Node ${nodeId} execution result:`, result)
+      
+      // 실행 완료 상태로 노드 업데이트
+      const newStatus = result.success ? 'completed' : 'error'
+      
+      set((state) => ({
+        nodes: state.nodes.map(node => 
+          node.id === nodeId 
+            ? { 
+                ...node, 
+                data: { 
+                  ...node.data, 
+                  status: newStatus,
+                  result: result.result,
+                  error: result.error || null,
+                  tool_used: finalToolName,
+                  parameters_used: finalParams
+                } 
+              }
+            : node
+        )
+      }))
+      
+      console.log(`Node ${nodeId} execution completed with status: ${newStatus}`)
+      
+    } catch (error) {
+      console.error(`Node ${nodeId} execution failed:`, error)
+      
+      // 오류 상태로 노드 업데이트
+      set((state) => ({
+        nodes: state.nodes.map(node => 
+          node.id === nodeId 
+            ? { 
+                ...node, 
+                data: { 
+                  ...node.data, 
+                  status: 'error',
+                  error: error instanceof Error ? error.message : String(error)
+                } 
+              }
+            : node
+        )
+      }))
+    }
+  },
+    
+    try {
+      // 노드 상태를 실행 중으로 변경
+      set((state) => ({
+        nodes: state.nodes.map(node => 
+          node.id === nodeId 
+            ? { ...node, data: { ...node.data, status: 'running' } }
+            : node
+        )
+      }))
+      
+      // OpenAI API 키 확인
+      const openaiApiKey = localStorage.getItem('openai_api_key')
+      if (!openaiApiKey) {
+        throw new Error('OpenAI API 키가 설정되지 않았습니다.')
+      }
+      
+      // 백엔드 MCP API 호출
+      const response = await fetch('http://localhost:8000/api/mcp/execute-workflow-node', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiApiKey}`
+        },
+        body: JSON.stringify({
+          node_id: nodeId,
+          tool_name: toolName,
+          arguments: params
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error('워크플로우 노드 실행 실패')
+      }
+      
+      const result = await response.json()
+      
+      // 실행 결과에 따라 노드 상태 업데이트
+      const newStatus = result.status === 'completed' ? 'completed' : 'error'
+      
+      set((state) => ({
+        nodes: state.nodes.map(node => 
+          node.id === nodeId 
+            ? { 
+                ...node, 
+                data: { 
+                  ...node.data, 
+                  status: newStatus,
+                  result: result.result 
+                } 
+              }
+            : node
+        )
+      }))
+      
+      console.log(`Node ${nodeId} execution completed with status: ${newStatus}`)
+      
+    } catch (error) {
+      console.error(`Node ${nodeId} execution failed:`, error)
+      
+      // 오류 상태로 노드 업데이트
+      set((state) => ({
+        nodes: state.nodes.map(node => 
+          node.id === nodeId 
+            ? { 
+                ...node, 
+                data: { 
+                  ...node.data, 
+                  status: 'error',
+                  error: error instanceof Error ? error.message : String(error)
+                } 
+              }
+            : node
+        )
+      }))
+    }
+  },
+  
+  executeEntireWorkflow: async () => {
+    console.log('Executing entire workflow...')
+    
+    const state = get()
+    
+    try {
+      set({ executionStatus: 'running' })
+      
+      // 시작 노드를 제외한 실행 가능한 노드들을 순서대로 실행
+      const executableNodes = state.nodes.filter(node => 
+        node.type !== 'start' && node.data.status !== 'completed'
+      )
+      
+      // 기본 실행 매개변수 설정
+      for (const node of executableNodes) {
+        let toolName = 'get_ticker_name' // 기본값
+        let params: Record<string, any> = {}
+        
+        // 노드 타입에 따른 도구 및 매개변수 설정
+        if (node.data.type === 'analysis') {
+          toolName = 'get_market_cap'
+          params = { market: 'KOSPI' }
+        } else if (node.data.type === 'data') {
+          toolName = 'get_stock_ohlcv'
+          params = { 
+            ticker: '005930', 
+            start_date: '20250720',
+            end_date: '20250731'
+          }
+        } else if (node.data.type === 'report') {
+          toolName = 'get_foreign_investment'
+          params = { market: 'KOSPI' }
+        }
+        
+        // 노드 실행
+        await get().executeWorkflowNode(node.id, toolName, params)
+        
+        // 노드 간 실행 간격
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+      
+      set({ executionStatus: 'completed' })
+      console.log('Entire workflow execution completed!')
+      
+    } catch (error) {
+      console.error('Workflow execution failed:', error)
+      set({ 
+        executionStatus: 'error',
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
 }))

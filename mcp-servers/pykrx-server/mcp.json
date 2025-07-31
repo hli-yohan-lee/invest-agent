@@ -1,0 +1,54 @@
+{
+  "name": "pykrx-server",
+  "version": "1.0.0",
+  "description": "한국거래소 데이터를 제공하는 MCP 서버 (pykrx 기반)",
+  "author": "Investment Platform Team",
+  "license": "MIT",
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "tools": [
+    {
+      "name": "get_stock_info",
+      "description": "종목 기본 정보 조회"
+    },
+    {
+      "name": "get_stock_prices", 
+      "description": "종목 가격 정보 조회"
+    },
+    {
+      "name": "get_stock_fundamentals",
+      "description": "종목 재무 정보 조회"
+    },
+    {
+      "name": "get_market_cap",
+      "description": "시가총액 정보 조회"
+    },
+    {
+      "name": "get_sector_performance",
+      "description": "업종별 성과 조회"
+    },
+    {
+      "name": "get_index_data",
+      "description": "지수 데이터 조회"
+    },
+    {
+      "name": "get_foreign_investment",
+      "description": "외국인 투자 현황 조회"
+    },
+    {
+      "name": "get_institutional_investment",
+      "description": "기관 투자 현황 조회"
+    },
+    {
+      "name": "get_short_selling",
+      "description": "공매도 현황 조회"
+    },
+    {
+      "name": "search_ticker",
+      "description": "종목명으로 종목 코드 검색"
+    }
+  ]
+}

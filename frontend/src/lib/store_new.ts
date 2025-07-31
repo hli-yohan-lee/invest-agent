@@ -389,12 +389,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   executeEntireWorkflow: async () => {
     console.log('Executing entire workflow...')
     
+    const state = get()
+    
     try {
       set({ executionStatus: 'running' })
       
       // 시작 노드를 제외한 실행 가능한 노드들을 순서대로 실행
-      const initialState = get()
-      const executableNodes = initialState.nodes.filter(node => 
+      const executableNodes = state.nodes.filter(node => 
         node.type !== 'start' && node.data.status !== 'completed'
       )
       
@@ -404,100 +405,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       for (const node of executableNodes) {
         console.log(`Processing node: ${node.id} (${node.data.type})`)
         
-        // 결과 노드인 경우 특별 처리
-        if (node.type === 'result') {
-          // 최신 상태에서 이전 노드들의 결과를 종합해서 최종 결과 생성
-          const currentState = get()
-          const taskNodes = currentState.nodes.filter(n => n.type === 'task' && n.data.status === 'completed')
-          const summaryResults = taskNodes.map(n => ({
-            title: n.data.label,
-            result: n.data.result
-          }))
-          
-          console.log(`Completed task nodes: ${taskNodes.length}`)
-          
-          // 결과 노드 업데이트
-          set((state) => ({
-            nodes: state.nodes.map(n => 
-              n.id === node.id 
-                ? { 
-                    ...n, 
-                    data: { 
-                      ...n.data, 
-                      status: 'completed',
-                      result: {
-                        summary: `총 ${taskNodes.length}개의 작업이 완료되었습니다.`,
-                        details: summaryResults,
-                        completedAt: new Date().toISOString()
-                      }
-                    } 
-                  }
-                : n
-            )
-          }))
-        } else {
-          // 일반 노드 실행 (자동 도구 선택)
-          console.log(`Executing node ${node.id}...`)
-          await get().executeWorkflowNode(node.id)
-          console.log(`Node ${node.id} execution completed`)
-        }
+        // 노드 실행 (자동 도구 선택)
+        await get().executeWorkflowNode(node.id)
         
         // 노드 간 실행 간격
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await new Promise(resolve => setTimeout(resolve, 1000))
       }
       
       set({ executionStatus: 'completed' })
       console.log('Entire workflow execution completed!')
       
-      // 최신 상태 다시 가져오기 (노드 실행 후 업데이트된 상태)
-      const updatedState = get()
-      
-      // 워크플로우 완료 후 결과 생성 및 결과 탭으로 이동
-      const resultNode = updatedState.nodes.find(node => node.type === 'result')
-      if (resultNode && resultNode.data.result) {
-        const newResult: Result = {
-          id: Math.random().toString(36).substr(2, 9),
-          workflowId: 'workflow-' + Date.now(),
-          type: 'report',
-          data: {
-            summary: '워크플로우 실행 완료',
-            results: updatedState.nodes.filter(node => node.type === 'task').map(node => ({
-              nodeId: node.id,
-              title: node.data.label,
-              status: node.data.status,
-              result: node.data.result,
-              tool_used: node.data.tool_used,
-              parameters_used: node.data.parameters_used
-            })),
-            finalResult: resultNode.data.result
-          },
-          metadata: {
-            executionTime: Date.now(),
-            timestamp: new Date(),
-            modules: updatedState.nodes.filter(node => node.data.tool_used).map(node => node.data.tool_used || '')
-          },
-          editable: false
-        }
-        
-        // 결과 추가 및 결과 탭으로 이동
-        set((state) => ({
-          results: [...state.results, newResult],
-          currentResult: newResult,
-          currentTab: 'result' // 모든 실행 완료 후에만 결과 탭으로 이동
-        }))
-        
-        console.log('All tasks completed! Moved to result tab with final results')
-      } else {
-        // 결과 노드가 없거나 결과가 없어도 모든 작업 완료 후 결과 탭으로 이동
-        set({ currentTab: 'result' })
-        console.log('All tasks completed! Moved to result tab')
-      }
-      
     } catch (error) {
       console.error('Workflow execution failed:', error)
       set({ 
         executionStatus: 'error',
-        currentTab: 'result', // 오류 시에도 결과 탭으로 이동 (오류 확인용)
         error: error instanceof Error ? error.message : String(error)
       })
     }
@@ -738,8 +659,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ 
         nodes: newNodes, 
         edges: newEdges,
-        workflowGenerating: false, // 로딩 종료
-        currentTab: 'workflow' // 워크플로우 탭으로 이동
+        workflowGenerating: false // 로딩 종료
       })
       
       console.log('Workflow generation completed!')
@@ -806,7 +726,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         nodes: newNodes, 
         edges: newEdges,
         workflowGenerating: false, // 로딩 종료
-        currentTab: 'workflow', // 워크플로우 탭으로 이동
         error: '워크플로우 생성에 실패했습니다. 기본 워크플로우를 생성했습니다.' 
       })
     }

@@ -4,9 +4,8 @@ import { CheckCircle, AlertCircle, FileText, BarChart3 } from 'lucide-react';
 
 interface ResultNodeData {
   label: string;
-  type: 'report' | 'chart' | 'data' | 'analysis';
-  status?: 'success' | 'warning' | 'error';
-  value?: string | number;
+  type?: 'report' | 'chart' | 'data' | 'analysis';
+  status?: 'success' | 'warning' | 'error' | 'pending';
 }
 
 interface ResultNodeProps {
@@ -14,7 +13,7 @@ interface ResultNodeProps {
   selected?: boolean;
 }
 
-const getResultIcon = (type: string) => {
+const getResultIcon = (type?: string) => {
   switch (type) {
     case 'report':
       return FileText;
@@ -35,6 +34,8 @@ const getResultColor = (status?: string) => {
       return 'from-yellow-400 to-yellow-500 border-yellow-300';
     case 'error':
       return 'from-red-400 to-red-500 border-red-300';
+    case 'pending':
+      return 'from-gray-400 to-gray-500 border-gray-300';
     default:
       return 'from-emerald-400 to-emerald-500 border-emerald-300';
   }
@@ -73,8 +74,7 @@ export default function ResultNode({ data, selected }: ResultNodeProps) {
         <div className="flex-1">
           <div className="text-white font-medium text-sm">{data.label}</div>
           <div className="text-white text-opacity-80 text-xs">
-            {data.value && <span className="font-medium">{data.value}</span>}
-            <span className="ml-1 capitalize">{data.type} 결과</span>
+            <span className="ml-1 capitalize">{data.type || 'general'} 결과</span>
           </div>
         </div>
         {data.status && (

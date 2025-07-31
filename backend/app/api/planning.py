@@ -258,6 +258,49 @@ async def get_plan(
     
     return plan
 
+@router.post("/test-openai")
+async def test_openai(request: ChatRequest):
+    """OpenAI API 연결 테스트"""
+    logger.info("OpenAI API 테스트 요청", api_key_preview=request.openai_api_key[:10] + "..." if request.openai_api_key else "None")
+    
+    try:
+        # AI 플래너 생성
+        ai_planner = AIPlanner(api_key=request.openai_api_key)
+        
+        # 간단한 테스트 메시지
+        test_message = "안녕하세요. API 연결 테스트입니다."
+        
+        # OpenAI API 직접 호출 테스트
+        if ai_planner.client:
+            response = await ai_planner.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "user", "content": test_message}
+                ],
+                max_tokens=100
+            )
+            
+            return {
+                "status": "success",
+                "message": "OpenAI API 연결 성공",
+                "response": response.choices[0].message.content,
+                "api_key_preview": request.openai_api_key[:10] + "..." if request.openai_api_key else "None"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "OpenAI 클라이언트가 초기화되지 않았습니다",
+                "api_key_preview": request.openai_api_key[:10] + "..." if request.openai_api_key else "None"
+            }
+            
+    except Exception as e:
+        logger.error("OpenAI API 테스트 실패", error=str(e))
+        return {
+            "status": "error",
+            "message": f"OpenAI API 연결 실패: {str(e)}",
+            "api_key_preview": request.openai_api_key[:10] + "..." if request.openai_api_key else "None"
+        }
+
 @router.post("/chat-stream")
 async def chat_stream(request: ChatRequest):
     """스트리밍 채팅 엔드포인트 (인증 없음)"""
