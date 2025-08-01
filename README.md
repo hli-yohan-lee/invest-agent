@@ -12,16 +12,53 @@
 # 상세한 로그와 함께 모든 서버 시작
 start-all-servers.bat
 
-# 또는 빠른 시작 (백그라운드 실행)
+## 🚀 빠른 시작
+
+### 방법 1: 원클릭 실행 (배치 파일)
+```cmd
+# 모든 의존성 설치 및 서버 시작
 quick-start.bat
+
+# 또는 직접 서버 시작 (의존성이 이미 설치된 경우)
+start-all-servers.bat
+```
+
+### 방법 2: PowerShell 스크립트 실행
+```powershell
+# PowerShell 실행 정책 설정 (최초 1회만)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# 모든 의존성 설치 및 서버 시작
+.\quick-start.ps1
+
+# 또는 직접 서버 시작 (의존성이 이미 설치된 경우)
+.\start-all-servers.ps1
 ```
 
 ### 🛑 서버 종료
 
-```bash
-# 모든 서버 한 번에 종료
+```cmd
+# 배치 파일로 종료
 stop-all-servers.bat
 ```
+
+```powershell
+# PowerShell로 종료
+.\stop-all-servers.ps1
+```
+
+### ⚠️ 중요 사항
+
+- **PowerShell 환경**: 
+  - 명령어 연결 시 `&&` 대신 **반드시** `;`를 사용해야 합니다
+  - 예: `cd backend && npm install` ❌ → `cd backend; npm install` ✅
+  - 배치 파일(.bat)은 PowerShell에서도 정상 동작합니다
+- **실행 정책**: PowerShell 스크립트(.ps1) 실행 시 실행 정책 설정이 필요할 수 있습니다
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+  ```
+- **포트 충돌**: 3000, 8000 포트가 사용 중이면 서버 시작이 실패할 수 있습니다
+- **권장사항**: Windows 환경에서는 `.bat` 파일 사용을 권장합니다
 
 ## 🏗️ 시스템 구성
 
@@ -69,7 +106,8 @@ stop-all-servers.bat
 
 개발 중에는 각 서버를 개별적으로 실행할 수 있습니다:
 
-```bash
+**배치 파일 사용 (권장):**
+```cmd
 # 백엔드 서버
 cd backend
 python -m uvicorn main:app --reload --port 8000
@@ -79,9 +117,23 @@ cd frontend
 npm run dev
 
 # MCP 서버
-cd mcp-servers/pykrx-server
+cd mcp-servers\pykrx-server
 python server.py
 ```
+
+**PowerShell 사용 시:**
+```powershell
+# 백엔드 서버
+cd backend; python -m uvicorn main:app --reload --port 8000
+
+# 프론트엔드 서버  
+cd frontend; npm run dev
+
+# MCP 서버
+cd mcp-servers\pykrx-server; python server.py
+```
+
+**주의**: PowerShell에서는 `&&` 대신 `;`를 사용해야 합니다!
 
 ### 요구사항
 

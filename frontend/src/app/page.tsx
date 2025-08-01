@@ -8,6 +8,7 @@ import InputBar from '@/components/InputBar'
 import ChatInterface from '@/components/ChatInterface'
 import WorkflowCanvas from '@/components/WorkflowCanvas'
 import ResultView from '@/components/ResultView'
+import ReportView from '@/components/ReportView'
 import SettingsMenu from '@/components/SettingsMenu'
 
 export default function Home() {
@@ -22,6 +23,8 @@ export default function Home() {
         return <WorkflowCanvas />
       case 'result':
         return <ResultView />
+      case 'report':
+        return <ReportView />
       default:
         return <ChatInterface />
     }

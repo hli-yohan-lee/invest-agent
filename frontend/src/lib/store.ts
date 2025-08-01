@@ -91,9 +91,33 @@ export interface MCPTool {
   inputSchema: any
 }
 
+export interface Report {
+  id: string
+  title: string
+  content: string
+  type: 'investment_analysis' | 'stock_analysis' | 'market_analysis'
+  status: 'generating' | 'completed' | 'error'
+  generatedAt: Date
+  metadata: {
+    workflowId?: string
+    stocksAnalyzed?: number
+    executionTime?: number
+    dataSource?: string[]
+  }
+  sections: ReportSection[]
+}
+
+export interface ReportSection {
+  id: string
+  title: string
+  content: string
+  type: 'summary' | 'analysis' | 'table' | 'chart' | 'recommendation'
+  order: number
+}
+
 interface AppState {
   // 전역 상태
-  currentTab: 'planning' | 'workflow' | 'result'
+  currentTab: 'planning' | 'workflow' | 'result' | 'report'
   isLoading: boolean
   error: string | null
   
@@ -118,8 +142,13 @@ interface AppState {
   moduleStatus: Record<string, 'online' | 'offline'>
   availableTools: MCPTool[]
   
+  // 보고서 상태
+  reports: Report[]
+  currentReport: Report | null
+  reportGenerating: boolean
+  
   // 액션들
-  setCurrentTab: (tab: 'planning' | 'workflow' | 'result') => void
+  setCurrentTab: (tab: 'planning' | 'workflow' | 'result' | 'report') => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   
@@ -149,6 +178,12 @@ interface AppState {
   updateModuleStatus: (moduleId: string, status: 'online' | 'offline') => void
   setAvailableTools: (tools: MCPTool[]) => void
   getAvailableMCPTools: () => Promise<void>
+  
+  // 보고서 액션
+  addReport: (report: Report) => void
+  setCurrentReport: (report: Report | null) => void
+  setReportGenerating: (generating: boolean) => void
+  generateReport: (workflowResults: any[]) => Promise<void>
   
   // 워크플로우 실행 액션
   executeWorkflowNode: (nodeId: string, toolName?: string, params?: Record<string, any>) => Promise<void>
@@ -180,6 +215,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   availableModules: [],
   moduleStatus: {},
   availableTools: [],
+  
+  reports: [],
+  currentReport: null,
+  reportGenerating: false,
   
   // 전역 액션
   setCurrentTab: (tab) => {
@@ -269,9 +308,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   
-  // 워크플로우 노드 실행
+  // 워크플로우 노드 실행 - 동적 도구 선택
   executeWorkflowNode: async (nodeId: string, toolName?: string, params?: Record<string, any>) => {
-    console.log(`Executing node ${nodeId} with tool ${toolName}:`, params)
+    console.log(`Executing node ${nodeId}`)
     
     const state = get()
     const node = state.nodes.find(n => n.id === nodeId)
@@ -280,7 +319,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error(`Node ${nodeId} not found`)
       return
     }
-    
+
     try {
       // 노드 상태를 실행 중으로 변경
       set((state) => ({
@@ -290,60 +329,84 @@ export const useAppStore = create<AppState>((set, get) => ({
             : node
         )
       }))
-      
-      // 도구 및 매개변수 자동 결정
-      let finalToolName = toolName
-      let finalParams = params || {}
-      
-      if (!finalToolName) {
-        // 노드 타입에 따른 자동 도구 선택
-        if (node.data.type === 'analysis') {
-          finalToolName = 'get_stock_fundamentals'
-          finalParams = { ticker: '005930' } // 삼성전자 기본값
-        } else if (node.data.type === 'data') {
-          finalToolName = 'get_stock_prices'
-          const today = new Date()
-          const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
-          finalParams = {
-            ticker: '005930',
-            start_date: lastWeek.toISOString().slice(0, 10).replace(/-/g, ''),
-            end_date: today.toISOString().slice(0, 10).replace(/-/g, ''),
-            period: 'day'
-          }
-        } else if (node.data.type === 'report') {
-          finalToolName = 'get_market_cap'
-          finalParams = { market: 'KOSPI' }
-        } else {
-          // 기본값
-          finalToolName = 'get_stock_info'
-          finalParams = { ticker: '005930' }
-        }
+
+      // OpenAI API 키 확인
+      const openaiApiKey = localStorage.getItem('openai_api_key')
+      if (!openaiApiKey) {
+        throw new Error('OpenAI API 키가 설정되지 않았습니다.')
       }
+
+      // 1단계: AI가 현재 노드에 적합한 MCP 도구를 선택하도록 요청
+      console.log(`Step 1: Selecting appropriate tool for node: ${node.data.label}`)
       
-      console.log(`Using tool: ${finalToolName} with params:`, finalParams)
-      
-      // MCP 도구 직접 호출 API 요청
-      const response = await fetch('http://localhost:8000/api/mcp/call-tool', {
+      const toolSelectionResponse = await fetch('http://localhost:8000/api/workflow/select-tool', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tool_name: finalToolName,
-          parameters: finalParams
+          node_description: node.data.label,
+          node_prompt: node.data.prompt || '',
+          workflow_context: state.nodes.map(n => ({ id: n.id, label: n.data.label, status: n.data.status })),
+          openai_api_key: openaiApiKey
         })
       })
-      
-      if (!response.ok) {
-        throw new Error(`API 요청 실패: ${response.status}`)
+
+      if (!toolSelectionResponse.ok) {
+        throw new Error('도구 선택 API 호출 실패')
       }
+
+      const toolSelection = await toolSelectionResponse.json()
+      console.log('Selected tool:', toolSelection)
+
+      // 2단계: 선택된 도구로 실제 작업 실행
+      const selectedTool = toolSelection.tool_name
+      const selectedParams = toolSelection.parameters
+
+      console.log(`Step 2: Executing selected tool: ${selectedTool} with params:`, selectedParams)
+
+      const mcpResponse = await fetch('http://localhost:8000/api/mcp/call-tool', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool_name: selectedTool,
+          arguments: selectedParams
+        })
+      })
+
+      if (!mcpResponse.ok) {
+        throw new Error('MCP 도구 실행 실패')
+      }
+
+      const mcpResult = await mcpResponse.json()
+      console.log('MCP tool result:', mcpResult)
+
+      // 3단계: AI가 결과를 분석하고 해석
+      console.log('Step 3: Analyzing results with AI')
       
-      const result = await response.json()
-      console.log(`Node ${nodeId} execution result:`, result)
-      
-      // 실행 완료 상태로 노드 업데이트
-      const newStatus = result.success ? 'completed' : 'error'
-      
+      const analysisResponse = await fetch('http://localhost:8000/api/workflow/analyze-result', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          node_description: node.data.label,
+          tool_used: selectedTool,
+          raw_result: mcpResult,
+          openai_api_key: openaiApiKey
+        })
+      })
+
+      if (!analysisResponse.ok) {
+        throw new Error('결과 분석 API 호출 실패')
+      }
+
+      const analysisResult = await analysisResponse.json()
+      console.log('Analysis result:', analysisResult)
+
+      // 노드 상태를 완료로 변경하고 결과 저장
       set((state) => ({
         nodes: state.nodes.map(node => 
           node.id === nodeId 
@@ -351,23 +414,23 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ...node, 
                 data: { 
                   ...node.data, 
-                  status: newStatus,
-                  result: result.result,
-                  error: result.error || null,
-                  tool_used: finalToolName,
-                  parameters_used: finalParams
+                  status: 'completed',
+                  result: analysisResult.analysis,
+                  tool_used: selectedTool,
+                  parameters_used: selectedParams,
+                  raw_data: mcpResult
                 } 
               }
             : node
         )
       }))
-      
-      console.log(`Node ${nodeId} execution completed with status: ${newStatus}`)
-      
+
+      console.log(`Node ${nodeId} execution completed successfully`)
+
     } catch (error) {
-      console.error(`Node ${nodeId} execution failed:`, error)
+      console.error(`Error executing node ${nodeId}:`, error)
       
-      // 오류 상태로 노드 업데이트
+      // 노드 상태를 에러로 변경
       set((state) => ({
         nodes: state.nodes.map(node => 
           node.id === nodeId 
@@ -376,7 +439,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 data: { 
                   ...node.data, 
                   status: 'error',
-                  error: error instanceof Error ? error.message : String(error)
+                  error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
                 } 
               }
             : node
@@ -384,8 +447,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
     }
   },
-  
-  // 전체 워크플로우 실행
+
+  // 자동 워크플로우 실행
   executeEntireWorkflow: async () => {
     console.log('Executing entire workflow...')
     
@@ -811,4 +874,153 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
     }
   },
+  
+  // 보고서 액션
+  addReport: (report) => {
+    set(state => ({
+      reports: [...state.reports, report]
+    }))
+  },
+  
+  setCurrentReport: (report) => {
+    set({ currentReport: report })
+  },
+  
+  setReportGenerating: (generating) => {
+    set({ reportGenerating: generating })
+  },
+  
+  generateReport: async (workflowResults) => {
+    const { setReportGenerating, addReport, setCurrentReport, setCurrentTab } = get()
+    
+    try {
+      setReportGenerating(true)
+      
+      // 워크플로우 결과 데이터 준비
+      const reportData = {
+        workflowResults,
+        timestamp: new Date().toISOString(),
+        totalStocks: workflowResults.reduce((total, result) => {
+          if (result.tool_used === 'get_all_tickers' && result.result) {
+            try {
+              const data = JSON.parse(result.result)
+              return data.total_count || 0
+            } catch {
+              return 0
+            }
+          }
+          return total
+        }, 0),
+        filteredStocks: workflowResults.reduce((total, result) => {
+          if (result.tool_used === 'filter_stocks_by_fundamentals' && result.result) {
+            try {
+              const data = JSON.parse(result.result)
+              return data.filtered_stocks?.length || 0
+            } catch {
+              return 0
+            }
+          }
+          return total
+        }, 0)
+      }
+      
+      // GPT API 호출하여 보고서 생성
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(reportData)
+      })
+      
+      if (!response.ok) {
+        throw new Error('보고서 생성 실패')
+      }
+      
+      const reportContent = await response.text()
+      
+      // 보고서 객체 생성
+      const newReport: Report = {
+        id: `report_${Date.now()}`,
+        title: `투자 분석 보고서 - ${new Date().toLocaleDateString()}`,
+        content: reportContent,
+        type: 'investment_analysis',
+        status: 'completed',
+        generatedAt: new Date(),
+        metadata: {
+          stocksAnalyzed: reportData.filteredStocks,
+          executionTime: Date.now(),
+          dataSource: workflowResults.map(r => r.tool_used).filter(Boolean)
+        },
+        sections: [
+          {
+            id: 'summary',
+            title: '요약',
+            content: reportContent.split('\n\n')[0] || '요약 정보 없음',
+            type: 'summary',
+            order: 1
+          },
+          {
+            id: 'analysis',
+            title: '분석 결과',
+            content: reportContent,
+            type: 'analysis',
+            order: 2
+          }
+        ]
+      }
+      
+      addReport(newReport)
+      setCurrentReport(newReport)
+      setCurrentTab('report')
+      
+    } catch (error) {
+      console.error('보고서 생성 실패:', error)
+      
+      // 에러 시 샘플 보고서 생성
+      const fallbackReport: Report = {
+        id: `report_${Date.now()}`,
+        title: `투자 분석 보고서 - ${new Date().toLocaleDateString()}`,
+        content: `# 투자 분석 보고서
+
+## 요약
+워크플로우 실행 결과를 바탕으로 한 투자 분석 보고서입니다.
+
+## 분석 결과
+${workflowResults.map((result, index) => `
+### ${index + 1}. ${result.tool_used || '분석 단계'}
+${result.result ? JSON.stringify(JSON.parse(result.result), null, 2) : '결과 없음'}
+`).join('\n')}
+
+## 투자 제안
+분석된 데이터를 바탕으로 한 투자 제안사항입니다.
+
+*이 보고서는 자동 생성되었으며, 실제 투자 결정 시 추가적인 분석이 필요합니다.*`,
+        type: 'investment_analysis',
+        status: 'completed',
+        generatedAt: new Date(),
+        metadata: {
+          stocksAnalyzed: workflowResults.length,
+          executionTime: Date.now(),
+          dataSource: workflowResults.map(r => r.tool_used).filter(Boolean)
+        },
+        sections: [
+          {
+            id: 'summary',
+            title: '요약',
+            content: '워크플로우 실행 결과를 바탕으로 한 투자 분석 보고서입니다.',
+            type: 'summary',
+            order: 1
+          }
+        ]
+      }
+      
+      addReport(fallbackReport)
+      setCurrentReport(fallbackReport)
+      setCurrentTab('report')
+      
+    } finally {
+      setReportGenerating(false)
+    }
+  }
 }))

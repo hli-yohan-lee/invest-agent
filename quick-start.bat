@@ -30,4 +30,5 @@ start http://localhost:3000
 echo.
 echo 💡 서버 종료: stop-all-servers.bat 실행
 echo.
-pause
+echo ✅ 서버가 백그라운드에서 실행 중입니다.
+echo 📝 로그 확인: 각 서버 창을 확인하세요.

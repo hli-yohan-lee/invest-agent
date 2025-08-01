@@ -1,7 +1,7 @@
 'use client'
 
 import { useAppStore } from '@/lib/store'
-import { MessageCircle, Workflow, BarChart3 } from 'lucide-react'
+import { MessageCircle, Workflow, BarChart3, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function TabNavigation() {
@@ -11,6 +11,7 @@ export default function TabNavigation() {
     { id: 'planning' as const, label: '1. 플래닝', icon: MessageCircle },
     { id: 'workflow' as const, label: '2. 워크플로우', icon: Workflow },
     { id: 'result' as const, label: '3. 결과', icon: BarChart3 },
+    { id: 'report' as const, label: '4. 보고서', icon: FileText },
   ]
 
   return (

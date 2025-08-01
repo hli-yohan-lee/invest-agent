@@ -12,7 +12,7 @@ import uvicorn
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.security import verify_token
-from app.api import auth, planning, workflow, results, mcp, users
+from app.api import auth, planning, workflow, results, mcp, users, reports
 from app.api import settings as settings_api
 from app.utils.logger import setup_logger
 
@@ -49,6 +49,7 @@ app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(planning.router, prefix="/api/planning", tags=["Planning"])
 app.include_router(workflow.router, prefix="/api/workflow", tags=["Workflow"])
 app.include_router(results.router, prefix="/api/results", tags=["Results"])
+app.include_router(reports.router, prefix="/api", tags=["Reports"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(mcp.router, prefix="/api/mcp", tags=["MCP"])
 

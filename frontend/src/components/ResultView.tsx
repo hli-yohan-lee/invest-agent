@@ -12,7 +12,9 @@ export default function ResultView() {
     executionStatus, 
     nodes, 
     error,
-    setCurrentResult 
+    reportGenerating,
+    setCurrentResult,
+    generateReport 
   } = useAppStore()
 
   // 최신 결과 자동 선택
@@ -212,11 +214,39 @@ export default function ResultView() {
   return (
     <div className="flex-1 bg-gray-50 overflow-auto">
       <div className="max-w-4xl mx-auto p-6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">분석 결과</h2>
-          <p className="text-gray-600">
-            워크플로우 실행 결과와 최종 분석 내용을 확인할 수 있습니다.
-          </p>
+        <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">분석 결과</h2>
+            <p className="text-gray-600">
+              워크플로우 실행 결과와 최종 분석 내용을 확인할 수 있습니다.
+            </p>
+          </div>
+          
+          {/* 보고서 생성 버튼 */}
+          {executionStatus === 'completed' && nodes.some(node => node.data.result) && (
+            <button
+              onClick={() => {
+                const nodeResults = nodes
+                  .filter(node => node.data.result)
+                  .map(node => ({
+                    tool_used: node.data.tool_used,
+                    result: node.data.result,
+                    status: node.data.status
+                  }))
+                generateReport(nodeResults)
+              }}
+              disabled={reportGenerating}
+              className={cn(
+                'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                'bg-blue-600 text-white hover:bg-blue-700',
+                'disabled:bg-gray-400 disabled:cursor-not-allowed',
+                'flex items-center space-x-2'
+              )}
+            >
+              <FileText className="w-4 h-4" />
+              <span>{reportGenerating ? '보고서 생성 중...' : '보고서 열람'}</span>
+            </button>
+          )}
         </div>
 
         {renderWorkflowStatus()}

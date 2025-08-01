@@ -1,0 +1,136 @@
+// store.ts 의 executeWorkflowNode 함수를 교체할 코드
+
+  executeWorkflowNode: async (nodeId: string, toolName?: string, params?: Record<string, any>) => {
+    console.log(`🚀 노드 실행 시작: ${nodeId}`)
+    
+    const state = get()
+    const node = state.nodes.find(n => n.id === nodeId)
+    
+    if (!node) {
+      console.error(`❌ 노드를 찾을 수 없음: ${nodeId}`)
+      return
+    }
+
+    try {
+      // 1. 노드 상태를 실행 중으로 변경
+      set((state) => ({
+        nodes: state.nodes.map(n => 
+          n.id === nodeId 
+            ? { ...n, data: { ...n.data, status: 'running' } }
+            : n
+        )
+      }))
+
+      // 2. OpenAI API 키 확인
+      const openaiApiKey = localStorage.getItem('openai_api_key')
+      if (!openaiApiKey) {
+        throw new Error('OpenAI API 키가 설정되지 않았습니다.')
+      }
+
+      // 3. AI가 현재 노드에 적합한 MCP 도구를 동적으로 선택
+      console.log(`🧠 AI 도구 선택 중: ${node.data.label}`)
+      
+      const toolSelectionResponse = await fetch('http://localhost:8000/api/workflow/select-tool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node_description: node.data.label,
+          node_prompt: node.data.prompt || '',
+          workflow_context: state.nodes.map(n => ({ 
+            id: n.id, 
+            label: n.data.label, 
+            status: n.data.status 
+          })),
+          openai_api_key: openaiApiKey
+        })
+      })
+
+      if (!toolSelectionResponse.ok) {
+        throw new Error('도구 선택 API 호출 실패')
+      }
+
+      const toolSelection = await toolSelectionResponse.json()
+      console.log(`✅ 선택된 도구: ${toolSelection.tool_name}`, toolSelection.parameters)
+
+      // 4. 선택된 도구로 실제 MCP 작업 실행
+      console.log(`⚡ MCP 도구 실행 중...`)
+      
+      const mcpResponse = await fetch('http://localhost:8000/api/mcp/call-tool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool_name: toolSelection.tool_name,
+          arguments: toolSelection.parameters
+        })
+      })
+
+      if (!mcpResponse.ok) {
+        throw new Error('MCP 도구 실행 실패')
+      }
+
+      const mcpResult = await mcpResponse.json()
+      console.log(`📊 MCP 실행 결과:`, mcpResult)
+
+      // 5. AI가 결과를 분석하고 해석
+      console.log(`🔍 AI 결과 분석 중...`)
+      
+      const analysisResponse = await fetch('http://localhost:8000/api/workflow/analyze-result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node_description: node.data.label,
+          tool_used: toolSelection.tool_name,
+          raw_result: mcpResult,
+          openai_api_key: openaiApiKey
+        })
+      })
+
+      if (!analysisResponse.ok) {
+        throw new Error('결과 분석 API 호출 실패')
+      }
+
+      const analysisResult = await analysisResponse.json()
+      console.log(`📝 분석 완료:`, analysisResult.analysis)
+
+      // 6. 노드 상태를 완료로 변경하고 모든 결과 저장
+      set((state) => ({
+        nodes: state.nodes.map(n => 
+          n.id === nodeId 
+            ? { 
+                ...n, 
+                data: { 
+                  ...n.data, 
+                  status: 'completed',
+                  result: analysisResult.analysis,
+                  tool_used: toolSelection.tool_name,
+                  parameters_used: toolSelection.parameters,
+                  raw_data: mcpResult,
+                  reasoning: toolSelection.reasoning
+                } 
+              }
+            : n
+        )
+      }))
+
+      console.log(`✅ 노드 ${nodeId} 실행 완료!`)
+
+    } catch (error) {
+      console.error(`❌ 노드 ${nodeId} 실행 실패:`, error)
+      
+      // 에러 상태로 노드 업데이트
+      set((state) => ({
+        nodes: state.nodes.map(n => 
+          n.id === nodeId 
+            ? { 
+                ...n, 
+                data: { 
+                  ...n.data, 
+                  status: 'error',
+                  error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
+                } 
+              }
+            : n
+        )
+      }))
+    }
+  },

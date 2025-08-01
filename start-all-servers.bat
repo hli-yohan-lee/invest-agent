@@ -53,12 +53,12 @@ echo    2. 우상단 설정 버튼으로 OpenAI API 키 설정
 echo    3. 플래닝 탭에서 투자 질문 입력
 echo    4. Ctrl+Enter로 워크플로우 생성 및 실행
 echo.
-echo ⚠️  서버 종료 시: 각 터미널 창에서 Ctrl+C 누르기
+echo ⚠️  서버 종료 시: stop-all-servers.bat 실행
 echo.
 echo 🔄 브라우저 자동 열기 중...
-timeout /t 5 /nobreak >nul
+timeout /t 3 /nobreak >nul
 start http://localhost:3000
 
 echo.
-echo 계속하려면 아무 키나 누르세요...
-pause >nul
+echo ✅ 서버 시작 완료! 브라우저에서 확인하세요.
+echo 📝 각 서버는 별도 창에서 실행 중입니다.
