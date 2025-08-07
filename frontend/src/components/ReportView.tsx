@@ -189,6 +189,13 @@ function formatReportContent(content: string): string {
     // 리스트 항목
     .replace(/^[\-\*\+] (.*)$/gm, '<div style="margin-left: 1rem; margin-bottom: 0.25rem;">• $1</div>')
     .replace(/^\d+\. (.*)$/gm, '<div style="margin-left: 1rem; margin-bottom: 0.25rem;">$1</div>')
+    
+    // 이모지 처리
+    .replace(/📊/g, '<span style="font-size: 1.2em;">📊</span>')
+    .replace(/🔍/g, '<span style="font-size: 1.2em;">🔍</span>')
+    .replace(/💡/g, '<span style="font-size: 1.2em;">💡</span>')
+    .replace(/⚠️/g, '<span style="font-size: 1.2em;">⚠️</span>')
+    .replace(/📈/g, '<span style="font-size: 1.2em;">📈</span>')
   
   // 줄바꿈을 HTML로 변환 - 가장 중요!
   result = result
@@ -198,7 +205,17 @@ function formatReportContent(content: string): string {
   
   // 각 줄을 div로 감싸서 확실히 줄바꿈되도록
   const lines = result.split('<br>')
-  result = lines.map(line => line.trim() ? `<div style="margin-bottom: 0.5rem;">${line}</div>` : '<div style="height: 0.5rem;"></div>').join('')
+  result = lines.map(line => {
+    const trimmedLine = line.trim()
+    if (!trimmedLine) {
+      return '<div style="height: 0.5rem;"></div>'
+    }
+    // 헤더 태그가 이미 있는 경우 그대로 반환
+    if (trimmedLine.startsWith('<h1') || trimmedLine.startsWith('<h2') || trimmedLine.startsWith('<h3')) {
+      return trimmedLine
+    }
+    return `<div style="margin-bottom: 0.5rem;">${trimmedLine}</div>`
+  }).join('')
   
   return result
 }

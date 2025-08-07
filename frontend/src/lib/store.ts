@@ -573,27 +573,87 @@ export const useAppStore = create<AppState>((set, get) => ({
           editable: false
         }
         
-        // 결과 추가 및 결과 탭으로 이동
+        // 결과 추가 (탭 이동은 3초 후에)
         set((state) => ({
           results: [...state.results, newResult],
-          currentResult: newResult,
-          currentTab: 'result' // 모든 실행 완료 후에만 결과 탭으로 이동
+          currentResult: newResult
         }))
         
-        console.log('All tasks completed! Moved to result tab with final results')
+        console.log('All tasks completed! Will move to result tab in 3 seconds')
+        
+        // 워크플로우 실행 완료 후 3초 뒤에 결과 탭으로 이동
+        setTimeout(() => {
+          set({ currentTab: 'result' })
+        }, 3000)
+        
+        // 워크플로우 실행 완료 후 자동으로 보고서 생성
+        const completedNodes = updatedState.nodes.filter(node => 
+          node.type === 'task' && node.data.status === 'completed'
+        )
+        
+        if (completedNodes.length > 0) {
+          console.log('Generating report from workflow results...')
+          
+          // 워크플로우 결과를 보고서 생성용 데이터로 변환
+          const workflowResults = completedNodes.map(node => ({
+            tool_used: node.data.tool_used,
+            parameters_used: node.data.parameters_used,
+            result: node.data.result,
+            analysis_result: node.data.analysis_result,
+            mcp_result: node.data.mcp_result,
+            raw_data: node.data.raw_data
+          }))
+          
+          // 보고서 생성 호출
+          setTimeout(() => {
+            get().generateReport(workflowResults)
+          }, 1000) // 1초 후 보고서 생성
+        }
       } else {
-        // 결과 노드가 없거나 결과가 없어도 모든 작업 완료 후 결과 탭으로 이동
-        set({ currentTab: 'result' })
-        console.log('All tasks completed! Moved to result tab')
+        // 결과 노드가 없거나 결과가 없어도 모든 작업 완료 후 3초 뒤에 결과 탭으로 이동
+        console.log('All tasks completed! Will move to result tab in 3 seconds')
+        
+        // 워크플로우 실행 완료 후 3초 뒤에 결과 탭으로 이동
+        setTimeout(() => {
+          set({ currentTab: 'result' })
+        }, 3000)
+        
+        // 워크플로우 실행 완료 후 자동으로 보고서 생성
+        const completedNodes = updatedState.nodes.filter(node => 
+          node.type === 'task' && node.data.status === 'completed'
+        )
+        
+        if (completedNodes.length > 0) {
+          console.log('Generating report from workflow results...')
+          
+          // 워크플로우 결과를 보고서 생성용 데이터로 변환
+          const workflowResults = completedNodes.map(node => ({
+            tool_used: node.data.tool_used,
+            parameters_used: node.data.parameters_used,
+            result: node.data.result,
+            analysis_result: node.data.analysis_result,
+            mcp_result: node.data.mcp_result,
+            raw_data: node.data.raw_data
+          }))
+          
+          // 보고서 생성 호출
+          setTimeout(() => {
+            get().generateReport(workflowResults)
+          }, 1000) // 1초 후 보고서 생성
+        }
       }
       
     } catch (error) {
       console.error('Workflow execution failed:', error)
       set({ 
         executionStatus: 'error',
-        currentTab: 'result', // 오류 시에도 결과 탭으로 이동 (오류 확인용)
         error: error instanceof Error ? error.message : String(error)
       })
+      
+      // 오류 시에도 3초 뒤에 결과 탭으로 이동
+      setTimeout(() => {
+        set({ currentTab: 'result' })
+      }, 3000)
     }
   },
   
@@ -618,10 +678,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       console.log('OpenAI API key found:', openaiApiKey.substring(0, 10) + '...')
 
-      // 기존 대화 내용 수집
-      const chatHistoryText = state.chatHistory
-        .map(msg => `${msg.type === 'user' ? '사용자' : 'AI'}: ${msg.content}`)
-        .join('\n\n')
+      // 마지막 AI 답변만 수집
+      const lastAssistantMessage = state.chatHistory
+        .filter(msg => msg.type === 'assistant')
+        .pop()
+      
+      if (!lastAssistantMessage) {
+        console.log('No assistant message found!')
+        set({ workflowGenerating: false, error: 'AI 답변이 없습니다.' })
+        return
+      }
+      
+      const lastMessageContent = lastAssistantMessage.content
 
       console.log('Sending workflow conversion request...')
 
@@ -632,10 +700,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: "위 대화 내용을 워크플로우로 변환해주세요",
+          message: "위 내용을 워크플로우로 변환해주세요",
           openai_api_key: openaiApiKey,
           mode: 'workflow',
-          chat_history: chatHistoryText
+          chat_history: lastMessageContent
         })
       })
 
@@ -835,10 +903,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         workflowGenerating: false // 로딩 종료
       })
       
-      // 워크플로우 생성 완료 후 탭 변경 (약간의 지연을 두어 렌더링 완료 보장)
+      // 워크플로우 생성 완료 후 탭 변경 (로딩 상태를 충분히 보여주기 위해 지연)
       setTimeout(() => {
         set({ currentTab: 'workflow' })
-      }, 100)
+      }, 1000)
       
       console.log('Workflow generation completed!')
       
@@ -907,10 +975,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         error: '워크플로우 생성에 실패했습니다. 기본 워크플로우를 생성했습니다.' 
       })
       
-      // 워크플로우 생성 완료 후 탭 변경 (약간의 지연을 두어 렌더링 완료 보장)
+      // 워크플로우 생성 완료 후 탭 변경 (로딩 상태를 충분히 보여주기 위해 지연)
       setTimeout(() => {
         set({ currentTab: 'workflow' })
-      }, 100)
+      }, 1000)
     }
   },
   
@@ -934,46 +1002,110 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     try {
       setReportGenerating(true)
+      console.log('Generating report with workflow results:', workflowResults)
       
-      // 워크플로우 결과 데이터 준비
+      // 워크플로우 결과 데이터 분석
       const reportData = {
         workflowResults,
         timestamp: new Date().toISOString(),
-        totalStocks: workflowResults.reduce((total, result) => {
-          if (result.tool_used === 'get_all_tickers' && result.result) {
-            try {
-              const data = JSON.parse(result.result)
-              return data.total_count || 0
-            } catch {
-              return 0
-            }
-          }
-          return total
-        }, 0),
-        filteredStocks: workflowResults.reduce((total, result) => {
-          if (result.tool_used === 'filter_stocks_by_fundamentals' && result.result) {
-            try {
-              const data = JSON.parse(result.result)
-              return data.filtered_stocks?.length || 0
-            } catch {
-              return 0
-            }
-          }
-          return total
-        }, 0)
+        totalStocks: 0,
+        filteredStocks: 0,
+        analysisSummary: []
       }
       
-      // GPT API 호출하여 보고서 생성
-      const response = await fetch('/api/generate-report', {
+      // 각 워크플로우 결과 분석
+      workflowResults.forEach((result, index) => {
+        console.log(`Analyzing result ${index + 1}:`, result)
+        
+        if (result.tool_used === 'get_all_tickers') {
+          try {
+            const data = typeof result.result === 'string' ? JSON.parse(result.result) : result.result
+            reportData.totalStocks = data.total_count || data.length || 0
+          } catch (e) {
+            console.log('Failed to parse get_all_tickers result:', e)
+          }
+        }
+        
+        if (result.tool_used === 'filter_stocks_by_fundamentals') {
+          try {
+            const data = typeof result.result === 'string' ? JSON.parse(result.result) : result.result
+            reportData.filteredStocks = data.filtered_stocks?.length || data.length || 0
+          } catch (e) {
+            console.log('Failed to parse filter_stocks_by_fundamentals result:', e)
+          }
+        }
+        
+        // 분석 결과 요약
+        if (result.analysis_result) {
+          reportData.analysisSummary.push({
+            tool: result.tool_used,
+            analysis: result.analysis_result
+          })
+        }
+      })
+      
+      console.log('Processed report data:', reportData)
+      
+      // OpenAI API 키 확인
+      const openaiApiKey = localStorage.getItem('openai_api_key')
+      if (!openaiApiKey) {
+        throw new Error('OpenAI API 키가 설정되지 않았습니다.')
+      }
+      
+      // 보고서 생성 프롬프트 구성
+      const reportPrompt = `다음 투자 분석 워크플로우 결과를 바탕으로 전문적인 투자 분석 보고서를 작성해주세요.
+
+## 워크플로우 실행 결과:
+${workflowResults.map((result, index) => `
+### ${index + 1}. ${result.tool_used || '분석 도구'}
+- 매개변수: ${JSON.stringify(result.parameters_used || {})}
+- 분석 결과: ${result.analysis_result || '결과 없음'}
+- 원시 데이터: ${JSON.stringify(result.mcp_result || result.raw_data || {}, null, 2)}
+`).join('\n')}
+
+## 분석 요약:
+- 총 분석 종목 수: ${reportData.totalStocks}개
+- 필터링된 우량 종목 수: ${reportData.filteredStocks}개
+- 실행된 분석 도구: ${workflowResults.map(r => r.tool_used).filter(Boolean).join(', ')}
+
+다음 형식으로 보고서를 작성해주세요:
+
+# 투자 분석 보고서
+
+## 📊 분석 요약
+[전체 분석 과정과 주요 발견사항 요약]
+
+## 🔍 상세 분석 결과
+[각 분석 도구별 결과와 해석]
+
+## 💡 투자 제안
+[분석 결과를 바탕으로 한 구체적인 투자 제안]
+
+## ⚠️ 주의사항
+[투자 시 고려해야 할 리스크와 주의사항]
+
+## 📈 결론
+[전체 분석의 결론과 향후 모니터링 방향]
+
+면책조항: 본 보고서는 공개된 데이터를 바탕으로 한 분석 결과이며, 투자 결정 시 추가적인 분석과 전문가 상담이 필요합니다.`
+
+      // 백엔드 API 호출하여 보고서 생성
+      const response = await fetch('http://localhost:8000/api/reports/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(reportData)
+        body: JSON.stringify({
+          prompt: reportPrompt,
+          openai_api_key: openaiApiKey,
+          workflow_data: reportData
+        })
       })
       
       if (!response.ok) {
-        throw new Error('보고서 생성 실패')
+        const errorText = await response.text()
+        console.error('Report generation API error:', errorText)
+        throw new Error(`보고서 생성 API 오류: ${response.status} - ${errorText}`)
       }
       
       const reportContent = await response.text()
@@ -1011,7 +1143,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       
       addReport(newReport)
       setCurrentReport(newReport)
-      setCurrentTab('report')
+      
+      // 보고서 생성 완료 후 보고서 탭으로 이동
+      setTimeout(() => {
+        setCurrentTab('report')
+      }, 500)
       
     } catch (error) {
       console.error('보고서 생성 실패:', error)
@@ -1056,7 +1192,11 @@ ${result.result ? JSON.stringify(JSON.parse(result.result), null, 2) : '결과 �
       
       addReport(fallbackReport)
       setCurrentReport(fallbackReport)
-      setCurrentTab('report')
+      
+      // 보고서 생성 완료 후 보고서 탭으로 이동
+      setTimeout(() => {
+        setCurrentTab('report')
+      }, 500)
       
     } finally {
       setReportGenerating(false)

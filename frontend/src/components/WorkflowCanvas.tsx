@@ -297,7 +297,7 @@ function WorkflowCanvasContent() {
   // React Flow 인스턴스 가져오기
   const reactFlowInstance = useReactFlow()
   
-  // 노드가 업데이트될 때 뷰 맞추기
+  // 노드가 업데이트될 때 뷰 맞추기 및 자동 스크롤
   useEffect(() => {
     if (storeNodes.length > 0) {
       setTimeout(() => {
@@ -307,21 +307,68 @@ function WorkflowCanvasContent() {
     }
   }, [storeNodes, reactFlowInstance])
   
+  // 실행 중인 노드로 자동 스크롤 및 상태 추적
+  useEffect(() => {
+    if (executionStatus === 'running') {
+      const runningNode = storeNodes.find(node => node.data.status === 'running')
+      const completedNodes = storeNodes.filter(node => node.data.status === 'completed')
+      
+              if (runningNode) {
+          // 현재 실행 중인 노드로 부드럽게 스크롤
+          setTimeout(() => {
+            console.log('Auto-scrolling to running node:', runningNode.id)
+            reactFlowInstance.setViewport({
+              x: runningNode.position.x - 300,
+              y: runningNode.position.y - 150,
+              zoom: 1.2
+            }, { duration: 800 })
+          }, 200)
+        } else if (completedNodes.length > 0) {
+          // 모든 노드가 완료되었을 때 마지막 완료된 노드로 스크롤
+          const lastCompletedNode = completedNodes[completedNodes.length - 1]
+          setTimeout(() => {
+            console.log('Scrolling to last completed node:', lastCompletedNode.id)
+            reactFlowInstance.setViewport({
+              x: lastCompletedNode.position.x - 200,
+              y: lastCompletedNode.position.y - 100,
+              zoom: 1
+            }, { duration: 600 })
+          }, 500)
+        }
+    }
+  }, [storeNodes, executionStatus, reactFlowInstance])
+  
   // store 상태가 변경될 때 React Flow 상태 업데이트
   useEffect(() => {
     console.log('Store nodes changed:', storeNodes.length, storeNodes)
     if (storeNodes.length > 0) {
       console.log('Updating React Flow nodes...')
       setNodes(storeNodes as any)
-      // 노드 업데이트 후 뷰 맞추기
-      setTimeout(() => {
-        reactFlowInstance.fitView({ padding: 50 })
-      }, 200)
+      
+      // 워크플로우 실행 중일 때 현재 실행 중인 노드로 스크롤
+      if (executionStatus === 'running') {
+        const runningNode = storeNodes.find(node => node.data.status === 'running')
+        if (runningNode) {
+          setTimeout(() => {
+            console.log('Auto-scrolling to running node:', runningNode.id)
+            reactFlowInstance.setViewport({
+              x: runningNode.position.x - 300,
+              y: runningNode.position.y - 150,
+              zoom: 1.2
+            }, { duration: 800 })
+          }, 100)
+        }
+      } else {
+        // 실행 중이 아닐 때는 전체 뷰 맞추기
+        setTimeout(() => {
+          reactFlowInstance.fitView({ padding: 50 })
+        }, 200)
+      }
     } else {
       console.log('No store nodes, using initial nodes')
       setNodes(initialNodes)
     }
-  }, [storeNodes, setNodes, reactFlowInstance])
+  }, [storeNodes, setNodes, reactFlowInstance, executionStatus])
   
   useEffect(() => {
     console.log('Store edges changed:', storeEdges.length, storeEdges) 
@@ -436,6 +483,21 @@ function WorkflowCanvasContent() {
               <div className="text-lg font-medium text-gray-900">워크플로우 생성 중</div>
               <div className="text-sm text-gray-500">플래닝 결과를 워크플로우로 변환하고 있습니다...</div>
               <div className="text-xs text-gray-400">잠시만 기다려주세요</div>
+            </div>
+          </div>
+        )}
+        
+        {/* 워크플로우 실행 중 진행 상황 표시 */}
+        {executionStatus === 'running' && (
+          <div className="absolute top-4 right-4 bg-blue-50 border border-blue-200 rounded-lg p-3 z-40">
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+              <span className="text-sm font-medium text-blue-800">
+                자동 스크롤 활성화
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-blue-600">
+              실행 중인 노드로 자동 스크롤됩니다
             </div>
           </div>
         )}

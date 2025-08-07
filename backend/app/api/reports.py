@@ -22,31 +22,41 @@ class WorkflowResult(BaseModel):
     status: Optional[str] = None
 
 class ReportRequest(BaseModel):
-    workflowResults: List[WorkflowResult]
-    timestamp: str
-    totalStocks: int = 0
-    filteredStocks: int = 0
+    prompt: str
+    openai_api_key: str
+    workflow_data: Dict[str, Any]
 
-@router.post("/generate-report")
+@router.post("/generate")
 async def generate_report(request: ReportRequest):
     """
     워크플로우 실행 결과를 바탕으로 투자 분석 보고서를 생성합니다.
     """
     try:
         logger.info("보고서 생성 요청 수신")
-        logger.info(f"분석된 종목 수: {request.totalStocks}")
-        logger.info(f"필터링된 종목 수: {request.filteredStocks}")
+        logger.info(f"워크플로우 데이터: {request.workflow_data}")
         
-        # 워크플로우 결과 분석
-        analysis_data = analyze_workflow_results(request.workflowResults)
+        # OpenAI API를 사용하여 보고서 생성
+        import openai
         
-        # 보고서 생성
-        report_content = generate_investment_report(
-            analysis_data,
-            request.totalStocks,
-            request.filteredStocks,
-            request.timestamp
+        client = openai.OpenAI(api_key=request.openai_api_key)
+        
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "당신은 전문적인 투자 분석가입니다. 워크플로우 실행 결과를 바탕으로 상세하고 전문적인 투자 분석 보고서를 작성해주세요. 보고서는 투자자에게 실용적인 정보를 제공해야 합니다."
+                },
+                {
+                    "role": "user",
+                    "content": request.prompt
+                }
+            ],
+            temperature=0.7,
+            max_tokens=3000
         )
+        
+        report_content = response.choices[0].message.content
         
         logger.info("보고서 생성 완료")
         return report_content

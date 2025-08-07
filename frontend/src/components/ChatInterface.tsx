@@ -6,10 +6,22 @@ import { User, Bot, Copy, Edit, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function ChatInterface(): React.JSX.Element {
-  const { chatHistory, currentPlan } = useAppStore()
+  const { chatHistory, currentPlan, workflowGenerating } = useAppStore()
+  const chatContainerRef = React.useRef<HTMLDivElement>(null)
+
+  // 채팅이 추가될 때마다 스크롤을 최하단으로
+  React.useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
+  }, [chatHistory])
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 pb-32">
+    <div 
+      ref={chatContainerRef} 
+      className="flex-1 overflow-y-auto p-6 pb-32"
+      style={{ scrollBehavior: 'smooth' }}
+    >
       <div className="max-w-4xl mx-auto space-y-6">
         {chatHistory.length === 0 ? (
           <div className="text-center py-12">
@@ -95,8 +107,21 @@ export default function ChatInterface(): React.JSX.Element {
               </div>
             ))}
             
+            {/* 워크플로우 생성 중 로딩 */}
+            {workflowGenerating && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="font-medium text-blue-800">워크플로우 생성 중...</span>
+                </div>
+                <div className="mt-2 text-sm text-blue-700">
+                  AI가 분석 결과를 바탕으로 워크플로우를 생성하고 있습니다
+                </div>
+              </div>
+            )}
+            
             {/* 실행 확인 프롬프트 */}
-            {chatHistory.length > 0 && chatHistory[chatHistory.length - 1].type === 'assistant' && (
+            {chatHistory.length > 0 && chatHistory[chatHistory.length - 1].type === 'assistant' && !workflowGenerating && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
