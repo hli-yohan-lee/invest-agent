@@ -43,6 +43,9 @@ export interface Node {
     error?: string
     tool_used?: string
     parameters_used?: Record<string, any>
+    raw_data?: any
+    mcp_result?: any
+    analysis_result?: any
   }
 }
 
@@ -388,6 +391,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const mcpResult = await mcpResponse.json()
       console.log('MCP tool result:', mcpResult)
+      
+      // MCP 결과를 상세히 출력
+      console.log('=== MCP 호출 결과 상세 ===')
+      console.log('도구명:', selectedTool)
+      console.log('매개변수:', selectedParams)
+      console.log('결과 타입:', typeof mcpResult)
+      console.log('결과 구조:', Object.keys(mcpResult))
+      console.log('전체 결과:', JSON.stringify(mcpResult, null, 2))
+      console.log('========================')
 
       // 3단계: AI가 결과를 분석하고 해석
       console.log('Step 3: Analyzing results with AI')
@@ -414,6 +426,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const analysisResult = await analysisResponse.json()
       console.log('Analysis result:', analysisResult)
+      
+      // 분석 결과를 상세히 출력
+      console.log('=== AI 분석 결과 상세 ===')
+      console.log('분석 내용:', analysisResult.analysis)
+      console.log('사용된 도구:', analysisResult.tool_used)
+      console.log('데이터 요약:', analysisResult.data_summary)
+      console.log('========================')
 
       // 노드 상태를 완료로 변경하고 결과 저장
       set((state) => ({
@@ -427,7 +446,10 @@ export const useAppStore = create<AppState>((set, get) => ({
                   result: analysisResult.analysis,
                   tool_used: selectedTool,
                   parameters_used: selectedParams,
-                  raw_data: mcpResult
+                  raw_data: mcpResult,
+                  // MCP 결과도 함께 저장
+                  mcp_result: mcpResult,
+                  analysis_result: analysisResult
                 } 
               }
             : node

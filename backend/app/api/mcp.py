@@ -35,12 +35,68 @@ MCP_SERVER_PATH = Path(__file__).parent.parent.parent.parent / "mcp-servers" / "
 async def call_mcp_tool(tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
     """MCP 서버의 도구를 호출합니다."""
     try:
-        # MCP 서버가 실행되지 않았을 가능성이 높으므로 바로 fallback 데이터 반환
         logger.info(f"MCP tool call requested: {tool_name} with params: {parameters}")
-        logger.info("MCP server not available, using fallback data")
         
-        # 기본 더미 데이터 반환 (실제 MCP 서버 연결 없이)
-        return await get_fallback_data(tool_name, parameters)
+        # MCP 서버 실행 확인 및 호출
+        mcp_server_path = MCP_SERVER_PATH / "run_server.py"
+        
+        if not mcp_server_path.exists():
+            logger.warning("MCP server script not found, using fallback data")
+            return await get_fallback_data(tool_name, parameters)
+        
+        # MCP 서버와 통신
+        import subprocess
+        import json
+        
+        # MCP 서버에 요청 전송
+        request_data = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": parameters
+            }
+        }
+        
+        try:
+            # MCP 서버 프로세스 실행
+            process = subprocess.Popen(
+                ["python", str(mcp_server_path)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(MCP_SERVER_PATH)
+            )
+            
+            # 요청 전송
+            request_json = json.dumps(request_data) + "\n"
+            stdout, stderr = process.communicate(input=request_json, timeout=30)
+            
+            if process.returncode == 0 and stdout.strip():
+                try:
+                    response = json.loads(stdout.strip())
+                    if "result" in response:
+                        logger.info(f"MCP server response: {response['result']}")
+                        return response["result"]
+                    else:
+                        logger.warning(f"MCP server error: {response.get('error', 'Unknown error')}")
+                        return await get_fallback_data(tool_name, parameters)
+                except json.JSONDecodeError:
+                    logger.warning("Invalid JSON response from MCP server")
+                    return await get_fallback_data(tool_name, parameters)
+            else:
+                logger.warning(f"MCP server process failed: {stderr}")
+                return await get_fallback_data(tool_name, parameters)
+                
+        except subprocess.TimeoutExpired:
+            logger.warning("MCP server timeout")
+            process.kill()
+            return await get_fallback_data(tool_name, parameters)
+        except Exception as e:
+            logger.error(f"MCP server communication failed: {e}")
+            return await get_fallback_data(tool_name, parameters)
         
     except Exception as e:
         logger.error(f"MCP tool call failed: {e}")
@@ -434,12 +490,66 @@ async def execute_workflow_node(request: MCPWorkflowNodeRequest):
 async def get_mcp_status():
     """MCP 서버 상태를 확인합니다."""
     try:
-        # MCP 서버 상태 확인 로직
+        import subprocess
+        import json
+        from datetime import datetime
+        
+        # MCP 서버 스크립트 존재 확인
+        mcp_server_path = MCP_SERVER_PATH / "run_server.py"
+        server_exists = mcp_server_path.exists()
+        
+        # PyKRX 라이브러리 설치 확인
+        pykrx_available = False
+        try:
+            import pykrx
+            pykrx_available = True
+        except ImportError:
+            pass
+        
+        # MCP 서버 연결 테스트
+        connection_test = False
+        if server_exists and pykrx_available:
+            try:
+                # 간단한 연결 테스트
+                process = subprocess.Popen(
+                    ["python", str(mcp_server_path)],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    cwd=str(MCP_SERVER_PATH)
+                )
+                
+                test_request = {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/list",
+                    "params": {}
+                }
+                
+                request_json = json.dumps(test_request) + "\n"
+                stdout, stderr = process.communicate(input=request_json, timeout=10)
+                
+                if process.returncode == 0 and stdout.strip():
+                    try:
+                        response = json.loads(stdout.strip())
+                        connection_test = "result" in response
+                    except json.JSONDecodeError:
+                        pass
+                        
+            except Exception:
+                pass
+        
+        status = "online" if connection_test else "offline"
+        
         return {
-            "status": "online",
+            "status": status,
             "server_path": str(MCP_SERVER_PATH),
-            "available_tools": 8,
-            "last_check": "2025-01-31T12:00:00Z"
+            "server_exists": server_exists,
+            "pykrx_available": pykrx_available,
+            "connection_test": connection_test,
+            "available_tools": 8 if connection_test else 0,
+            "last_check": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Failed to check MCP status: {e}")

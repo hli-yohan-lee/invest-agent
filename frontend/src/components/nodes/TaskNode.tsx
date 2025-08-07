@@ -68,6 +68,15 @@ export default function TaskNode({ data, selected }: TaskNodeProps) {
       return result;
     }
     if (typeof result === 'object') {
+      // MCP 결과를 더 읽기 쉽게 포맷팅
+      if (result.success !== undefined) {
+        // MCP API 응답 형식
+        if (result.success) {
+          return JSON.stringify(result.result, null, 2);
+        } else {
+          return `오류: ${result.error}`;
+        }
+      }
       return JSON.stringify(result, null, 2);
     }
     return String(result);
@@ -150,9 +159,14 @@ export default function TaskNode({ data, selected }: TaskNodeProps) {
             <div className="mb-3">
               <div className="text-xs font-medium text-gray-700 mb-1">실행 결과:</div>
               <div className="text-xs bg-white rounded p-2 border max-h-32 overflow-y-auto font-mono">
-                {formatResult(data.result).substring(0, 500)}
-                {formatResult(data.result).length > 500 && '...'}
+                {formatResult(data.result).substring(0, 800)}
+                {formatResult(data.result).length > 800 && '...'}
               </div>
+              {formatResult(data.result).length > 800 && (
+                <div className="text-xs text-gray-500 mt-1">
+                  전체 결과를 보려면 클릭하세요
+                </div>
+              )}
             </div>
           )}
           
@@ -172,6 +186,17 @@ export default function TaskNode({ data, selected }: TaskNodeProps) {
               <div className="text-xs font-medium text-gray-700 mb-1">매개변수:</div>
               <div className="text-xs bg-gray-50 rounded p-2 border font-mono">
                 {JSON.stringify(data.parameters_used, null, 2)}
+              </div>
+            </div>
+          )}
+          
+          {/* MCP 원시 데이터 */}
+          {(data as any).mcp_result && (
+            <div className="mb-3">
+              <div className="text-xs font-medium text-blue-700 mb-1">MCP 원시 데이터:</div>
+              <div className="text-xs bg-blue-50 rounded p-2 border font-mono max-h-24 overflow-y-auto">
+                {JSON.stringify((data as any).mcp_result, null, 2).substring(0, 400)}
+                {JSON.stringify((data as any).mcp_result, null, 2).length > 400 && '...'}
               </div>
             </div>
           )}
