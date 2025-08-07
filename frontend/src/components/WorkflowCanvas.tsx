@@ -313,11 +313,15 @@ function WorkflowCanvasContent() {
     if (storeNodes.length > 0) {
       console.log('Updating React Flow nodes...')
       setNodes(storeNodes as any)
+      // 노드 업데이트 후 뷰 맞추기
+      setTimeout(() => {
+        reactFlowInstance.fitView({ padding: 50 })
+      }, 200)
     } else {
       console.log('No store nodes, using initial nodes')
       setNodes(initialNodes)
     }
-  }, [storeNodes, setNodes])
+  }, [storeNodes, setNodes, reactFlowInstance])
   
   useEffect(() => {
     console.log('Store edges changed:', storeEdges.length, storeEdges) 
@@ -431,6 +435,22 @@ function WorkflowCanvasContent() {
               <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
               <div className="text-lg font-medium text-gray-900">워크플로우 생성 중</div>
               <div className="text-sm text-gray-500">플래닝 결과를 워크플로우로 변환하고 있습니다...</div>
+              <div className="text-xs text-gray-400">잠시만 기다려주세요</div>
+            </div>
+          </div>
+        )}
+        
+        {/* 빈 상태 메시지 */}
+        {!workflowGenerating && nodes.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 text-gray-400">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">워크플로우가 없습니다</h3>
+              <p className="text-gray-500">플래닝 탭에서 대화를 완료한 후 워크플로우를 생성해주세요</p>
             </div>
           </div>
         )}

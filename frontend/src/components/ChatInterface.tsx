@@ -1,10 +1,11 @@
 'use client'
 
+import React from 'react'
 import { useAppStore } from '@/lib/store'
 import { User, Bot, Copy, Edit, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export default function ChatInterface() {
+export default function ChatInterface(): React.JSX.Element {
   const { chatHistory, currentPlan } = useAppStore()
 
   return (
@@ -28,6 +29,7 @@ export default function ChatInterface() {
               ].map((example) => (
                 <button
                   key={example}
+                  type="button"
                   className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition-colors"
                 >
                   {example}
@@ -63,13 +65,22 @@ export default function ChatInterface() {
                   
                   {message.type === 'assistant' && (
                     <div className="mt-3 flex gap-2">
-                      <button className="p-1 text-gray-500 hover:text-gray-700 rounded">
+                      <button 
+                        type="button"
+                        className="p-1 text-gray-500 hover:text-gray-700 rounded"
+                      >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button className="p-1 text-gray-500 hover:text-gray-700 rounded">
+                      <button 
+                        type="button"
+                        className="p-1 text-gray-500 hover:text-gray-700 rounded"
+                      >
                         <Copy className="w-4 h-4" />
                       </button>
-                      <button className="p-1 text-gray-500 hover:text-gray-700 rounded">
+                      <button 
+                        type="button"
+                        className="p-1 text-gray-500 hover:text-gray-700 rounded"
+                      >
                         <RotateCcw className="w-4 h-4" />
                       </button>
                     </div>
@@ -94,12 +105,19 @@ export default function ChatInterface() {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => useAppStore.getState().setCurrentTab('workflow')}
+                      onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                        e.preventDefault()
+                        const { generateWorkflowFromPlanning } = useAppStore.getState()
+                        generateWorkflowFromPlanning()
+                      }}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
                       실행
                     </button>
-                    <button className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
+                    <button 
+                      type="button"
+                      className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                    >
                       수정
                     </button>
                   </div>

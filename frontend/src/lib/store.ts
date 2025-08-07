@@ -352,8 +352,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       })
 
+      console.log('Tool selection response status:', toolSelectionResponse.status)
       if (!toolSelectionResponse.ok) {
-        throw new Error('도구 선택 API 호출 실패')
+        const errorText = await toolSelectionResponse.text()
+        console.error('Tool selection API error:', errorText)
+        throw new Error(`도구 선택 API 호출 실패: ${toolSelectionResponse.status} - ${errorText}`)
       }
 
       const toolSelection = await toolSelectionResponse.json()
@@ -372,12 +375,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
         body: JSON.stringify({
           tool_name: selectedTool,
-          arguments: selectedParams
+          parameters: selectedParams
         })
       })
 
+      console.log('MCP response status:', mcpResponse.status)
       if (!mcpResponse.ok) {
-        throw new Error('MCP 도구 실행 실패')
+        const errorText = await mcpResponse.text()
+        console.error('MCP tool error:', errorText)
+        throw new Error(`MCP 도구 실행 실패: ${mcpResponse.status} - ${errorText}`)
       }
 
       const mcpResult = await mcpResponse.json()
@@ -399,8 +405,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       })
 
+      console.log('Analysis response status:', analysisResponse.status)
       if (!analysisResponse.ok) {
-        throw new Error('결과 분석 API 호출 실패')
+        const errorText = await analysisResponse.text()
+        console.error('Analysis API error:', errorText)
+        throw new Error(`결과 분석 API 호출 실패: ${analysisResponse.status} - ${errorText}`)
       }
 
       const analysisResult = await analysisResponse.json()
@@ -801,9 +810,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ 
         nodes: newNodes, 
         edges: newEdges,
-        workflowGenerating: false, // 로딩 종료
-        currentTab: 'workflow' // 워크플로우 탭으로 이동
+        workflowGenerating: false // 로딩 종료
       })
+      
+      // 워크플로우 생성 완료 후 탭 변경 (약간의 지연을 두어 렌더링 완료 보장)
+      setTimeout(() => {
+        set({ currentTab: 'workflow' })
+      }, 100)
       
       console.log('Workflow generation completed!')
       
@@ -869,9 +882,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         nodes: newNodes, 
         edges: newEdges,
         workflowGenerating: false, // 로딩 종료
-        currentTab: 'workflow', // 워크플로우 탭으로 이동
         error: '워크플로우 생성에 실패했습니다. 기본 워크플로우를 생성했습니다.' 
       })
+      
+      // 워크플로우 생성 완료 후 탭 변경 (약간의 지연을 두어 렌더링 완료 보장)
+      setTimeout(() => {
+        set({ currentTab: 'workflow' })
+      }, 100)
     }
   },
   

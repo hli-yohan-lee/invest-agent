@@ -183,7 +183,10 @@ async def select_appropriate_tool(request: ToolSelectionRequest):
 4. 뉴스 분석이 필요하면 get_market_news를, 재무 분석이 필요하면 get_stock_fundamentals나 filter_stocks_by_fundamentals를 사용하세요
 """
 
-        response = await openai.chat.completions.create(
+        # OpenAI 클라이언트 생성
+        client = openai.OpenAI(api_key=request.openai_api_key)
+        
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "당신은 투자 분석 전문가입니다. JSON 형식으로만 응답하세요."},
@@ -281,7 +284,10 @@ async def analyze_tool_result(request: AnalysisRequest):
 길이는 200-500자 정도로 간결하게 작성해주세요.
 """
 
-        response = await openai.chat.completions.create(
+        # OpenAI 클라이언트 생성
+        client = openai.OpenAI(api_key=request.openai_api_key)
+        
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "당신은 투자 분석 전문가입니다. 데이터를 명확하고 실용적으로 해석하세요."},
